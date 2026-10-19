@@ -94,4 +94,25 @@ jobs:
           image-ref: stocklens:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "1"
+          format: json
+          output: trivy.json
+          exit-code: "0"
+      - name: Fail on fixable HIGH/CRITICAL findings
+        run: |
+          # Findings (or a scanner that produced no report) become public
+          # annotations, then the job fails — so the reason is visible without
+          # opening the log.
+          python3 - <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path("trivy.json")
+          if not path.exists() or not path.read_text().strip():
+              print("::error title=trivy::scanner produced no report (database download failed?)")
+              sys.exit(1)
+          found = [(r["Target"], v) for r in json.loads(path.read_text()).get("Results", [])
+                   for v in r.get("Vulnerabilities") or []]
+          for target, v in found[:20]:
+              print(f"::error title=trivy {v['Severity']}::{v['PkgName']} {v['InstalledVersion']}"
+                    f" -> {v.get('FixedVersion')} {v['VulnerabilityID']} in {target}")
+          print(f"{len(found)} fixable HIGH/CRITICAL findings")
+          sys.exit(1 if found else 0)
+          PY
