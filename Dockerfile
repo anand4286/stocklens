@@ -3,7 +3,7 @@
 # holds the virtualenv and the app, runs as an unprivileged user, and works
 # with a read-only root filesystem (writes go to /app/var, a mounted volume).
 
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /build
 RUN python -m venv /opt/venv
@@ -12,7 +12,7 @@ COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY src ./src
 RUN pip install ".[postgres]"
 
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 LABEL org.opencontainers.image.title="stocklens" \
       org.opencontainers.image.description="Explainable stock analytics with a guarded AI analyst agent" \
       org.opencontainers.image.licenses="Apache-2.0"
