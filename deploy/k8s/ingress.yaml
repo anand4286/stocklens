@@ -12,6 +12,13 @@ metadata:
     nginx.ingress.kubernetes.io/limit-connections: "20"
     nginx.ingress.kubernetes.io/proxy-body-size: "64k"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+    # Symbol affinity: hash on the path (which carries the ticker) so each
+    # symbol is always served by the same pod. Caches are per process, so
+    # without this every replica recomputes every symbol and cold work grows
+    # with the replica count; with it, each symbol is computed once per cache
+    # window cluster-wide. Consistent hashing keeps most keys in place when
+    # the HPA adds or removes pods. See docs/CAPACITY.md.
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$uri"
 spec:
   ingressClassName: nginx
   tls:

@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     #: Benchmark used for beta and relative strength.
     benchmark_symbol: str = "SPY"
     cache_ttl_seconds: int = Field(default=300, ge=0)
+    #: How many symbols one process keeps cached. Measured at ~0.75 MB per
+    #: symbol (bars, news, filings, the report and its JSON), so memory is
+    #: about 80 MB + 0.75 MB x this. 256 fits the 512 Mi pod limit with headroom.
+    cache_max_symbols: int = Field(default=256, ge=8, le=20_000)
+    #: When > 0 and no API key is configured, analytics GETs are marked
+    #: `Cache-Control: public, max-age=N` so a CDN can serve them. Off by
+    #: default; authenticated responses are never marked shareable.
+    public_cache_seconds: int = Field(default=0, ge=0, le=3600)
 
     # -- storage ------------------------------------------------------------
     database_url: str = "sqlite:///./var/stocklens.db"

@@ -11,7 +11,7 @@ outcome exists, grades itself in public, re-tests every signal on the stock in f
 verifies every figure its AI analyst cites.
 
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776ab?logo=python&logoColor=white)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-248%20passing-2ea44f)](tests)
+[![Tests](https://img.shields.io/badge/tests-254%20passing-2ea44f)](tests)
 [![Numerics](https://img.shields.io/badge/numerics-pure%20python%2C%20no%20NumPy-6d8cff)](docs/adr/0005-numerics-implemented-not-imported.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![API console](https://img.shields.io/badge/API%20console-live-8b5cf6)](https://anand4286.github.io/stocklens/)
@@ -48,6 +48,7 @@ verifies every figure its AI analyst cites.
 9. [Data model](#9-data-model)
 10. [How the estimators are tested](#10-how-the-estimators-are-tested)
 11. [Security and deployment](#11-security-and-deployment)
+    - [Capacity and scaling](#capacity-and-scaling)
 12. [Quick start](#12-quick-start)
 13. [API](#13-api)
 14. [Project layout and documentation](#14-project-layout-and-documentation)
@@ -516,7 +517,7 @@ erDiagram
 ## 10. How the estimators are tested
 
 Each estimator is tested twice: on a **seeded null**, where it must find nothing, and on a
-**planted signal**, where it must find it. 248 tests, about 20 seconds, no network.
+**planted signal**, where it must find it. 254 tests, about 20 seconds, no network.
 
 ```mermaid
 flowchart LR
@@ -569,6 +570,48 @@ environment or a secret manager, and the app runs fully offline in demo mode wit
 Reporting a vulnerability and the deployer checklist: [SECURITY.md](SECURITY.md) ·
 threat model: [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) ·
 step by step: [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+### Capacity and scaling
+
+**Measured** on an Apple M4 with ApacheBench (64 concurrent, keep-alive, zero failed requests) —
+reproduce with `scripts/benchmark.sh`:
+
+| | 1 worker | 8 workers |
+|---|---:|---:|
+| Stock report, cached | **2,008 req/s** (p99 41 ms) | **5,741 req/s** (p99 22 ms) |
+| Portfolio, cached | 1,615 req/s | 4,325 req/s |
+| Stock report, cold (a symbol nobody has viewed this window) | 4.7 reports/s | 20.3 reports/s |
+| Memory | ~80 MB + 0.75 MB per cached symbol, bounded (plateaus at 271 MB) | × workers |
+
+**Planning** (half the measured speed for cloud vCPUs, 50% headroom, an active user ≈ 0.1 req/s):
+
+| Tier | Deployment | Concurrent active users | Symbols kept fresh |
+|---|---|---:|---|
+| Demo | laptop, 1 worker | ~5,000 | ~375 |
+| Small | one VM, 4 vCPU, `WEB_CONCURRENCY=4` | ~20,000 | ~375 |
+| Team | Kubernetes, 4 pods, symbol-affinity ingress, PostgreSQL | ~20,000 | ~1,500 |
+| Growth | Kubernetes, HPA up to 20 pods, 15-minute cache window | ~100,000 | the whole US market |
+| Edge | + CDN (`STOCKLENS_PUBLIC_CACHE_SECONDS`) | bounded by the CDN | the whole US market |
+
+```mermaid
+flowchart LR
+    S1["1 · Vertical<br/>workers = vCPUs"] --> S2["2 · Horizontal<br/>stateless pods + HPA<br/>PostgreSQL · symbol affinity"]
+    S2 --> S3["3 · Shared state<br/>Redis cache + limits"]
+    S3 --> S4["4 · Precompute + CDN"]
+    S4 --> S5["5 · NumPy engines<br/>same signatures"]
+    classDef done fill:#ecfdf5,stroke:#10b981,color:#111
+    classDef next fill:#eef2ff,stroke:#6d8cff,color:#111
+    class S1,S2 done
+    class S3,S4,S5 next
+```
+
+**Why scaling is mostly configuration:** the service holds no session state — caches are
+derived and rebuildable, everything else is in the database — so any replica serves any
+request. Stages 1–2 are ready today (env vars plus the provided Kubernetes manifests); stages
+3–5 are designed behind interfaces that already exist. The one trap, and how it is avoided:
+caches are per process, so adding replicas would multiply cold work; the ingress hashes on the
+URL so each symbol is computed by one pod. Full model, formulas and limits:
+**[docs/CAPACITY.md](docs/CAPACITY.md)**.
 
 ---
 
@@ -644,11 +687,11 @@ src/stocklens/
   agent/         tools · loop · prompts · rules fallback
   data/          provider protocols · Alpaca · SEC EDGAR · sectors · demo generator · TTL cache
   web/           six pages and eleven tabs as vanilla ES modules
-scripts/         build_docs_site.py — generates the API console from the live OpenAPI spec
+scripts/         build_docs_site.py (API console) · benchmark.sh + bench_cold.py (capacity)
 site/            the generated API console (deployed to GitHub Pages)
 deploy/          caddy · nginx · systemd · vm · k8s · cloudrun · aws · azure
 docs/            architecture · methodology · quant · agent · security · deployment · API · ADRs
-tests/           248 tests: nulls and planted signals, point-in-time, security, agent, API
+tests/           254 tests: nulls and planted signals, point-in-time, security, agent, API
 ```
 
 | Document | What it covers |
@@ -659,6 +702,7 @@ tests/           248 tests: nulls and planted signals, point-in-time, security, 
 | [AGENT.md](docs/AGENT.md) | Agent design, guardrails, failure modes, cost controls |
 | [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) | STRIDE threat model, network and firewall design |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Every deployment target, step by step |
+| [CAPACITY.md](docs/CAPACITY.md) | Measured throughput, the sizing model, and the five-stage scaling path |
 | [API.md](docs/API.md) | Endpoint reference with response shapes |
 | [adr/](docs/adr) | Seven architecture decision records, including why there is no NumPy and why the forecast ledger is write-once |
 

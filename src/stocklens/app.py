@@ -19,6 +19,7 @@ There is no write endpoint for market state, no account, no order path.
 
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,7 +28,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -92,6 +93,15 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
     # Walk-forward records are deterministic for a given day's data and cost
     # around a second; an hour's cache keeps them off the hot path.
     app.state.records = TTLCache(3600, max_items=256)
+    # A report is a pure function of its inputs, and its inputs are cached for
+    # `cache_ttl_seconds`; caching the report for the same window turns a
+    # ~150 ms computation into a dictionary lookup without serving anything
+    # staler than the data underneath it already was.
+    app.state.reports = TTLCache(settings.cache_ttl_seconds,
+                                 max_items=settings.cache_max_symbols)
+    # Ledger writes happen once per symbol per session; after the first, the
+    # unique keys make every further attempt a no-op, so skip the round-trips.
+    app.state.ledger_done = TTLCache(6 * 3600, max_items=20_000)
     app.state.anthropic = anthropic_client
     if app.state.anthropic is None and settings.anthropic_api_key is not None:
         import anthropic
@@ -125,17 +135,37 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
                                 headers={"Retry-After": str(int(retry) + 1)})
 
     Heavy = Depends(compute_budget)
+
+    def shareable(response: Response) -> None:
+        """Let a CDN cache public analytics responses (opt-in, never with auth)."""
+        if settings.public_cache_seconds and settings.api_key is None:
+            response.headers["Cache-Control"] = (
+                f"public, max-age={settings.public_cache_seconds}, "
+                f"stale-while-revalidate={settings.public_cache_seconds}")
+
+    Cacheable = Depends(shareable)
     def parse_symbol(raw: str) -> str:
         try:
             return normalise_symbol(raw)
         except ValueError:
             raise HTTPException(status_code=422, detail="invalid ticker symbol") from None
 
-    def build_report(symbol: str) -> dict:
+    def cached_report(symbol: str) -> tuple[dict, bytes]:
+        """The report and its JSON encoding, both computed once per cache window.
+
+        A report is ~90 KB of nested JSON; re-encoding it per request cost more
+        than everything else on the hot path combined.
+        """
+        def build() -> tuple[dict, bytes]:
+            data = report_builder.build(symbol, app.state.market, settings.benchmark_symbol)
+            return data, json.dumps(data, separators=(",", ":"), default=str).encode()
         try:
-            return report_builder.build(symbol, app.state.market, settings.benchmark_symbol)
+            return app.state.reports.get_or_set(("report", symbol), build)
         except DataUnavailable as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from None
+
+    def build_report(symbol: str) -> dict:
+        return cached_report(symbol)[0]
 
     # -- pages -------------------------------------------------------------
 
@@ -197,10 +227,11 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
         }
 
     @app.get("/api/v1/symbols/{symbol}/report", tags=["analytics"], dependencies=[Authed])
-    def symbol_report(symbol: Symbol) -> dict:
+    def symbol_report(symbol: Symbol) -> Response:
         sym = parse_symbol(symbol)
-        data = build_report(sym)
-        try:
+        data, body = cached_report(sym)
+
+        def record() -> bool:
             resolve_due(app.state.db, sym,
                         app.state.market.bars(sym, report_builder.HISTORY_DAYS))
             if app.state.db.forecasts_written_today() < settings.ledger_daily_limit:
@@ -209,10 +240,17 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
             else:
                 log.warning("ledger daily limit reached; nothing recorded",
                             extra={"symbol": sym})
+            return True
+
+        try:
+            app.state.ledger_done.get_or_set((sym, data["quote"]["as_of"]), record)
         except Exception:
-            # The ledger is valuable but not worth failing a page view over.
+            # The ledger is valuable but not worth failing a page view over; a
+            # failure is not cached, so the next view tries again.
             log.exception("could not record snapshot", extra={"symbol": sym})
-        return data
+        response = Response(content=body, media_type="application/json")
+        shareable(response)
+        return response
 
     def commit_forecast(sym: str, data: dict) -> None:
         """Write today's forecast once (due ones are resolved by the caller).
@@ -253,7 +291,7 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
         }
 
     @app.get("/api/v1/symbols/{symbol}/evidence", tags=["analytics"],
-             dependencies=[Authed, Heavy])
+             dependencies=[Authed, Heavy, Cacheable])
     def symbol_evidence(symbol: Symbol) -> dict:
         """Walk-forward tests of every price family on this stock's own history.
 
@@ -318,7 +356,7 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
             row["created_at"] = row["created_at"].isoformat(timespec="seconds")
         return {"symbol": sym, "snapshots": rows}
 
-    @app.get("/api/v1/portfolio", tags=["analytics"], dependencies=[Authed, Heavy])
+    @app.get("/api/v1/portfolio", tags=["analytics"], dependencies=[Authed, Heavy, Cacheable])
     def portfolio(symbols: Annotated[str, Query(min_length=3, max_length=240)]) -> dict:
         """Correlation structure of a basket and five ways to weight it.
 
@@ -336,7 +374,8 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
                 closes[sym] = [b.close for b in app.state.market.bars(sym, 300)]
             except DataUnavailable as exc:
                 skipped[sym] = str(exc)
-        result = portfolio_lab.analyse(closes)
+        result = app.state.reports.get_or_set(
+            ("portfolio", *closes), lambda: portfolio_lab.analyse(closes))
         if result is None:
             raise HTTPException(status_code=404,
                                 detail="not enough aligned history for at least two symbols")

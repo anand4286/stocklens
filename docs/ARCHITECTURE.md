@@ -132,6 +132,7 @@ upstream, and cannot be talked into fetching anything else.
 | Snapshots, agent runs | database | permanent | Yes |
 | Forecast ledger | database, append-only, write-once resolution | permanent | Yes |
 | Simulated records, evidence | in-process `TTLCache` | 1 hour | No — deterministic per day's data |
+| Reports (dict + encoded JSON), portfolio results | in-process single-flight `TTLCache`, bounded by `STOCKLENS_CACHE_MAX_SYMBOLS` | data TTL | No — the ingress hashes on the URL so each symbol lives on one pod ([CAPACITY.md](CAPACITY.md)) |
 | Agent daily budget | counted from `agent_runs` | per UTC day | Yes |
 | Agent result cache | read from `agent_runs` | `STOCKLENS_AGENT_CACHE_MINUTES` | Yes |
 

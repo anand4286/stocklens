@@ -31,4 +31,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).status == 200 else 1)"]
 # --proxy-headers is safe only because the container is never exposed directly;
 # every deploy template puts a proxy or managed load balancer in front.
-CMD ["sh", "-c", "exec uvicorn --factory stocklens.app:app_factory --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1} --no-server-header"]
+# WEB_CONCURRENCY: worker processes. Keep 1 on Kubernetes (scale pods instead,
+# one pod per CPU); set to the vCPU count on a single VM. Memory per worker is
+# ~80 MB + 0.75 MB x STOCKLENS_CACHE_MAX_SYMBOLS.
+CMD ["sh", "-c", "exec uvicorn --factory stocklens.app:app_factory --host 0.0.0.0 --port ${PORT:-8080} --workers ${WEB_CONCURRENCY:-1} --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1} --no-server-header"]

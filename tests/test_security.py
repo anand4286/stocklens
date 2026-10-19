@@ -159,3 +159,19 @@ def test_http_clients_do_not_log_upstream_urls():
     configure("INFO", as_json=True)
     for name in ("httpx", "httpcore", "anthropic"):
         assert not logging.getLogger(name).isEnabledFor(logging.INFO)
+
+
+def test_cdn_caching_is_opt_in_and_never_with_an_api_key():
+    from fastapi.testclient import TestClient
+
+    from stocklens.app import create_app
+    from tests.conftest import make_settings
+
+    with TestClient(create_app(make_settings())) as c:
+        assert c.get("/api/v1/symbols/KO/report").headers["cache-control"] == "no-store"
+    with TestClient(create_app(make_settings(public_cache_seconds=120))) as c:
+        for url in ("/api/v1/symbols/KO/report", "/api/v1/portfolio?symbols=KO,PEP"):
+            assert c.get(url).headers["cache-control"].startswith("public, max-age=120")
+    with TestClient(create_app(make_settings(public_cache_seconds=120, api_key="k" * 32))) as c:
+        r = c.get("/api/v1/symbols/KO/report", headers={"Authorization": "Bearer " + "k" * 32})
+        assert r.headers["cache-control"] == "no-store"
