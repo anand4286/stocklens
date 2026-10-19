@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = Field(default=60, ge=1)
     #: Origins allowed to call the API from a browser. Empty = same-origin only.
     cors_origins: list[str] = []
+
+    @field_validator("cors_origins")
+    @classmethod
+    def _exact_origins_only(cls, origins: list[str]) -> list[str]:
+        """A wildcard would let any site read the API with a visitor's browser."""
+        for origin in origins:
+            if origin == "*" or not origin.startswith(("https://", "http://")) or (
+                    origin.rstrip("/").count("/") > 2):
+                raise ValueError(f"CORS origin must be exact scheme://host[:port]: {origin!r}")
+        return [o.rstrip("/") for o in origins]
+
     #: Trust X-Forwarded-For only behind a proxy you control.
     trust_proxy_headers: bool = False
 
@@ -66,6 +77,16 @@ class Settings(BaseSettings):
     #: a public endpoint that spends money is an invitation.
     agent_public: bool = False
     agent_rate_limit_per_minute: int = Field(default=3, ge=1)
+
+    # -- compute and storage ceilings ---------------------------------------
+    #: Per-client limit on the endpoints that re-score history or fetch many
+    #: symbols (evidence, portfolio, forecasts, track record). Each costs
+    #: 0.5-2 s of CPU uncached, so the general API limit is far too generous.
+    compute_rate_limit_per_minute: int = Field(default=10, ge=1)
+    #: Ceiling on new rows written to the snapshot and forecast ledgers per UTC
+    #: day. A ledger written on GET is a storage-growth vector: without a cap,
+    #: cycling through valid tickers grows the database without bound.
+    ledger_daily_limit: int = Field(default=5000, ge=0)
 
     # -- logging ------------------------------------------------------------
     log_level: str = "INFO"

@@ -8,8 +8,10 @@ one request per company per TTL.
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 import time
+from datetime import date
 
 import httpx
 
@@ -17,6 +19,8 @@ from .base import DataUnavailable, Fundamentals
 
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+#: The filer's profile. Company facts carry no industry code; this does.
+SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
 #: Each field is the first tag that reports it. Companies choose among
@@ -36,10 +40,46 @@ TAGS: dict[str, tuple[str, ...]] = {
     "long_term_debt": ("LongTermDebtNoncurrent", "LongTermDebt"),
     "cash": ("CashAndCashEquivalentsAtCarryingValue",),
     "equity": ("StockholdersEquity",),
+    # -- the research layer's inputs; spellings follow the tags filers actually
+    # use, most common first.
+    "interest_expense": ("InterestExpense", "InterestExpenseDebt",
+                         "InterestExpenseNonoperating"),
+    "income_tax": ("IncomeTaxExpenseBenefit",),
+    "pretax_income": (
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic",
+    ),
+    "depreciation": ("DepreciationDepletionAndAmortization",
+                     "DepreciationAmortizationAndAccretionNet",
+                     "DepreciationAndAmortization", "Depreciation"),
+    "stock_compensation": ("ShareBasedCompensation", "AllocatedShareBasedCompensationExpense"),
+    "research_development": ("ResearchAndDevelopmentExpense",),
+    "sga": ("SellingGeneralAndAdministrativeExpense",),
+    "receivables": ("AccountsReceivableNetCurrent", "ReceivablesNetCurrent"),
+    "inventory": ("InventoryNet", "InventoryGross"),
+    "ppe_net": ("PropertyPlantAndEquipmentNet",),
+    "retained_earnings": ("RetainedEarningsAccumulatedDeficit",),
+    "dividends_paid": ("PaymentsOfDividendsCommonStock", "PaymentsOfDividends"),
+    "buybacks": ("PaymentsForRepurchaseOfCommonStock",),
+    "shares_diluted": ("WeightedAverageNumberOfDilutedSharesOutstanding",),
 }
 #: Flow items are summed over a period; balances are a point in time.
 FLOWS = {"revenue", "gross_profit", "operating_income", "net_income",
-         "operating_cash_flow", "capex"}
+         "operating_cash_flow", "capex", "interest_expense", "income_tax", "pretax_income",
+         "depreciation", "stock_compensation", "research_development", "sga",
+         "dividends_paid", "buybacks", "shares_diluted"}
+#: XBRL reports most facts in USD; share counts are in `shares`.
+UNITS = {"shares_diluted": "shares"}
+#: Fields whose multi-year series the valuation layer needs for growth and a
+#: DCF base. Five points is four year-on-year changes: enough to see a trend,
+#: few enough that the oldest still describes the same company.
+HISTORY_FIELDS = ("revenue", "net_income", "operating_cash_flow", "capex", "shares_diluted")
+HISTORY_POINTS = 5
+#: A "prior year" is a period end 10-14 months before the latest one. Anything
+#: else is a gap in the filings, and comparing across a gap would report a
+#: two-year change as a one-year change.
+PRIOR_WINDOW_DAYS = (300, 430)
 
 
 class EdgarFundamentals:
@@ -79,8 +119,35 @@ class EdgarFundamentals:
             return cached[1]
         cik = self._cik(symbol)
         result = None if cik is None else parse_company_facts(self._get(FACTS_URL.format(cik=cik)))
+        if result is not None and cik is not None:
+            sic = self._sic(cik)
+            if sic is not None:
+                result = dataclasses.replace(result, sic=sic)
         self._cache[symbol] = (now, result)
         return result
+
+    def _sic(self, cik: int) -> int | None:
+        """The industry code, or None on any failure.
+
+        A second request for a secondary field: the fundamentals are complete
+        without it, so an outage or an odd payload here must never cost the
+        page its figures. It shares the fundamentals' cache entry and so costs
+        at most one extra request per company per TTL.
+        """
+        try:
+            return parse_sic(self._get(SUBMISSIONS_URL.format(cik=cik)))
+        except (DataUnavailable, ValueError):
+            return None
+
+
+def parse_sic(payload: dict) -> int | None:
+    """`sicCode` from a submissions payload. The SEC sends it as a string."""
+    raw = payload.get("sicCode") if isinstance(payload, dict) else None
+    try:
+        sic = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return sic if 0 < sic < 10000 else None
 
 
 def _annual(facts: dict, tag: str, unit: str = "USD") -> list[dict]:
@@ -111,19 +178,41 @@ def _latest_by_end(rows: list[dict], flow: bool) -> list[tuple[str, float]]:
     return sorted(seen.items())
 
 
+def _prior_point(series: list[tuple[str, float]]) -> float | None:
+    """The value roughly one fiscal year before the latest point, or None."""
+    if len(series) < 2:
+        return None
+    latest = date.fromisoformat(series[-1][0][:10])
+    lo, hi = PRIOR_WINDOW_DAYS
+    for end, value in reversed(series[:-1]):
+        gap = (latest - date.fromisoformat(end[:10])).days
+        if lo <= gap <= hi:
+            return value
+        if gap > hi:
+            break
+    return None
+
+
 def parse_company_facts(payload: dict) -> Fundamentals | None:
     gaap = payload.get("facts", {}).get("us-gaap", {})
     if not gaap:
         return None
     values: dict[str, float | None] = {}
+    prior: dict[str, float | None] = {}
+    history: dict[str, list[tuple[str, float]]] = {}
     revenue_series: list[tuple[str, float]] = []
     fiscal_year: int | None = None
     for field, tags in TAGS.items():
         # Companies switch tags over time (Apple left `Revenues` in 2018), so
         # take whichever equivalent tag reports the most recent period.
-        candidates = [_latest_by_end(_annual(gaap, tag), flow=field in FLOWS) for tag in tags]
+        unit = UNITS.get(field, "USD")
+        candidates = [_latest_by_end(_annual(gaap, tag, unit), flow=field in FLOWS)
+                      for tag in tags]
         series = max((c for c in candidates if c), key=lambda c: c[-1][0], default=[])
         values[field] = series[-1][1] if series else None
+        prior[field] = _prior_point(series)
+        if field in HISTORY_FIELDS and series:
+            history[field] = series[-HISTORY_POINTS:]
         if field == "revenue" and series:
             revenue_series = series
             fiscal_year = int(series[-1][0][:4])
@@ -141,5 +230,7 @@ def parse_company_facts(payload: dict) -> Fundamentals | None:
         revenue_prior=revenue_series[-2][1] if len(revenue_series) >= 2 else None,
         shares_outstanding=shares,
         source="sec-edgar",
+        prior=prior,
+        history=history,
         **values,
     )

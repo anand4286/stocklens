@@ -152,3 +152,220 @@ export function tail(series, count) {
   for (const [k, v] of Object.entries(series)) out[k] = Array.isArray(v) ? v.slice(-count) : v;
   return out;
 }
+
+/** Volume at price: horizontal bars by level, value area highlighted, POC and last price marked. */
+export function profileChart(profile) {
+  const W = canvasWidth(), H = 360, pad = { l: 8, r: 64, t: 8, b: 8 };
+  const { svg, inner } = frame(W, H, pad);
+  const bins = profile.bins;
+  const lo = bins[0].low, hi = bins[bins.length - 1].high;
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  const maxVol = Math.max(...bins.map((b) => b.volume)) || 1;
+  const x = (v) => inner.l + ((inner.r - inner.l) * v) / maxVol;
+  for (const b of bins) {
+    const top = y(b.high), hgt = Math.max(1, y(b.low) - y(b.high) - 1);
+    svg.append(s("rect", { x: inner.l, y: top, width: Math.max(0, x(b.volume) - inner.l), height: hgt,
+      class: b.in_value_area ? "pv-in" : "pv-out" }));
+  }
+  const mark = (price, cls, label) => {
+    svg.append(s("line", { x1: inner.l, x2: inner.r, y1: y(price), y2: y(price), class: cls }));
+    const t = s("text", { x: inner.r + 6, y: y(price) + 4 });
+    t.textContent = `${label} ${price.toFixed(2)}`;
+    svg.append(t);
+  };
+  mark(profile.value_area_high, "ref", "VAH");
+  mark(profile.value_area_low, "ref", "VAL");
+  mark(profile.poc, "poc", "POC");
+  mark(profile.price, "last", "Last");
+  svg.setAttribute("aria-label", `Volume profile, point of control ${profile.poc}`);
+  return svg;
+}
+
+/** Realised-volatility cone: p10–p90 band and median per window, with today's reading. */
+export function coneChart(cone) {
+  const W = canvasWidth(), H = 220, pad = { l: 8, r: 56, t: 10, b: 24 };
+  const { svg, inner } = frame(W, H, pad);
+  const vals = cone.flatMap((c) => [c.p10, c.p90, c.current]).filter((v) => v !== null);
+  const [, hi] = extent(vals);
+  const lo = 0;
+  const n = cone.length;
+  const x = (i) => inner.l + 30 + ((inner.r - inner.l - 60) * i) / Math.max(1, n - 1);
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  yAxis(svg, inner, lo, hi, y, (v) => `${(v * 100).toFixed(0)}%`);
+  const band = "M" + cone.map((c, i) => `${x(i)},${y(c.p90)}`).join("L") + "L" +
+    [...cone].reverse().map((c, j) => `${x(n - 1 - j)},${y(c.p10)}`).join("L") + "Z";
+  svg.append(s("path", { d: band, class: "band" }));
+  svg.append(s("path", { d: path(cone.map((c) => c.p50), x, y), class: "sma20" }));
+  svg.append(s("path", { d: path(cone.map((c) => c.current), x, y), class: "price" }));
+  cone.forEach((c, i) => {
+    if (c.current !== null) svg.append(s("circle", { cx: x(i), cy: y(c.current), r: 4, class: "dot" }));
+    const t = s("text", { x: x(i), y: inner.b + 16, "text-anchor": "middle" });
+    t.textContent = `${c.window}d`;
+    svg.append(t);
+  });
+  svg.setAttribute("aria-label", "Realised volatility cone");
+  return svg;
+}
+
+/** A forecast term structure: one line over horizons, with a dashed long-run level. */
+export function termChart(points, longRun) {
+  const W = canvasWidth(), H = 200, pad = { l: 8, r: 56, t: 10, b: 24 };
+  const { svg, inner } = frame(W, H, pad);
+  const vals = points.map((p) => p.vol_annual);
+  const [lo, hi] = extent([...vals, longRun ?? vals[0]]);
+  const n = points.length;
+  const x = (i) => inner.l + 30 + ((inner.r - inner.l - 60) * i) / Math.max(1, n - 1);
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  yAxis(svg, inner, lo, hi, y, (v) => `${(v * 100).toFixed(1)}%`);
+  if (longRun) svg.append(s("line", { x1: inner.l, x2: inner.r, y1: y(longRun), y2: y(longRun), class: "ref" }));
+  svg.append(s("path", { d: path(vals, x, y), class: "price" }));
+  points.forEach((p, i) => {
+    svg.append(s("circle", { cx: x(i), cy: y(p.vol_annual), r: 3.5, class: "dot" }));
+    const t = s("text", { x: x(i), y: inner.b + 16, "text-anchor": "middle" });
+    t.textContent = `${p.sessions}d`;
+    svg.append(t);
+  });
+  svg.setAttribute("aria-label", "GARCH volatility forecast by horizon");
+  return svg;
+}
+
+/** Shape analogs: today's z-normalised path in bold over its nearest historical matches. */
+export function analogChart(analogs) {
+  const W = canvasWidth(), H = 220, pad = { l: 8, r: 56, t: 10, b: 24 };
+  const { svg, inner } = frame(W, H, pad);
+  const all = [analogs.query.path, ...analogs.matches.map((m) => m.path)].flat();
+  const [lo, hi] = extent(all);
+  const n = analogs.query.path.length;
+  const x = (i) => inner.l + ((inner.r - inner.l) * i) / Math.max(1, n - 1);
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  yAxis(svg, inner, lo, hi, y, (v) => `${v.toFixed(1)}σ`, 2);
+  for (const m of analogs.matches) svg.append(s("path", { d: path(m.path, x, y), class: "analog" }));
+  svg.append(s("path", { d: path(analogs.query.path, x, y), class: "price" }));
+  svg.setAttribute("aria-label", `Today's ${n}-session path against ${analogs.matches.length} historical analogs`);
+  return svg;
+}
+
+/** A labelled square heatmap for a correlation matrix on [-1, 1]. */
+export function heatmap(labels, matrix) {
+  const n = labels.length;
+  const cell = Math.max(18, Math.min(44, Math.floor(560 / n)));
+  const left = 56, top = 8;
+  const W = left + cell * n + 8, H = top + cell * n + 56;
+  const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart heat", role: "img" });
+  matrix.forEach((row, i) => row.forEach((v, j) => {
+    const r = s("rect", { x: left + j * cell, y: top + i * cell, width: cell - 1, height: cell - 1,
+      class: v >= 0 ? "hm-up" : "hm-down", "fill-opacity": Math.min(1, Math.abs(v)).toFixed(2) });
+    const tip = s("title");
+    tip.textContent = `${labels[i]} · ${labels[j]}: ${v.toFixed(2)}`;
+    r.append(tip);
+    svg.append(r);
+    if (cell >= 30) {
+      const t = s("text", { x: left + j * cell + cell / 2, y: top + i * cell + cell / 2 + 4, "text-anchor": "middle", class: "hm-val" });
+      t.textContent = v.toFixed(2).replace("0.", ".");
+      svg.append(t);
+    }
+  }));
+  labels.forEach((l, i) => {
+    const a = s("text", { x: left - 6, y: top + i * cell + cell / 2 + 4, "text-anchor": "end" });
+    a.textContent = l;
+    const b = s("text", { x: left + i * cell + cell / 2, y: top + n * cell + 14, "text-anchor": "end",
+      transform: `rotate(-45 ${left + i * cell + cell / 2} ${top + n * cell + 14})` });
+    b.textContent = l;
+    svg.append(a, b);
+  });
+  svg.setAttribute("aria-label", `Correlation matrix of ${n} symbols`);
+  return svg;
+}
+
+/** Eigenvalues as bars against the Marchenko–Pastur noise band. */
+export function spectrumChart(spectrum) {
+  const W = canvasWidth(), H = 220, pad = { l: 8, r: 56, t: 10, b: 24 };
+  const { svg, inner } = frame(W, H, pad);
+  const ev = spectrum.eigenvalues;
+  const hi = Math.max(...ev, spectrum.mp_upper) * 1.08, lo = 0;
+  const n = ev.length;
+  const bw = (inner.r - inner.l) / n;
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  yAxis(svg, inner, lo, hi, y, (v) => v.toFixed(1));
+  svg.append(s("rect", { x: inner.l, y: y(spectrum.mp_upper), width: inner.r - inner.l,
+    height: y(spectrum.mp_lower) - y(spectrum.mp_upper), class: "band" }));
+  ev.forEach((v, i) => {
+    svg.append(s("rect", { x: inner.l + i * bw + 2, y: y(v), width: Math.max(1, bw - 4), height: inner.b - y(v),
+      class: v > spectrum.mp_upper ? "bar-up" : "bar-flat" }));
+  });
+  svg.append(s("line", { x1: inner.l, x2: inner.r, y1: y(spectrum.mp_upper), y2: y(spectrum.mp_upper), class: "ref" }));
+  svg.setAttribute("aria-label", `${spectrum.signal_factors} eigenvalue(s) above the Marchenko–Pastur noise edge`);
+  return svg;
+}
+
+/** Reliability diagram: predicted probability against observed frequency, with Wilson bars. */
+export function reliabilityChart(bins) {
+  const W = 420, H = 320, pad = { l: 44, r: 12, t: 12, b: 36 };
+  const { svg, inner } = frame(W, H, pad);
+  const lo = 0.25, hi = 0.75;
+  const x = (v) => inner.l + ((inner.r - inner.l) * (v - lo)) / (hi - lo);
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  for (const v of [0.3, 0.4, 0.5, 0.6, 0.7]) {
+    svg.append(s("line", { x1: inner.l, x2: inner.r, y1: y(v), y2: y(v), class: "grid-line" }));
+    const ty = s("text", { x: inner.l - 6, y: y(v) + 4, "text-anchor": "end" }); ty.textContent = `${v * 100}%`;
+    const tx = s("text", { x: x(v), y: inner.b + 16, "text-anchor": "middle" }); tx.textContent = `${v * 100}%`;
+    svg.append(ty, tx);
+  }
+  svg.append(s("line", { x1: x(lo), y1: y(lo), x2: x(hi), y2: y(hi), class: "ref" }));
+  const label = s("text", { x: (inner.l + inner.r) / 2, y: H - 4, "text-anchor": "middle" }); label.textContent = "forecast P(up)";
+  svg.append(label);
+  const clamp = (v) => Math.max(lo, Math.min(hi, v));
+  for (const b of bins) {
+    if (!b.n || b.mean_predicted === null || b.observed_up === null) continue;
+    const cx = x(clamp(b.mean_predicted));
+    if (b.wilson_95) svg.append(s("line", { x1: cx, x2: cx, y1: y(clamp(b.wilson_95.low)), y2: y(clamp(b.wilson_95.high)), class: "errbar" }));
+    const dot = s("circle", { cx, cy: y(clamp(b.observed_up)), r: Math.max(3, Math.min(10, Math.sqrt(b.n) / 2)), class: b.reliable ? "dot" : "dot-faint" });
+    const tip = s("title"); tip.textContent = `${b.bin}: predicted ${(b.mean_predicted * 100).toFixed(1)}%, observed ${(b.observed_up * 100).toFixed(1)}% (n=${b.n})`;
+    dot.append(tip);
+    svg.append(dot);
+  }
+  svg.setAttribute("aria-label", "Reliability diagram: points on the diagonal are calibrated");
+  return svg;
+}
+
+/** Several named series over shared dates. `series` is [{label, values, cls}]. */
+export function multiLine(dates, series, { fmt = (v) => v.toFixed(2), zero = false, height = 240 } = {}) {
+  const W = canvasWidth(), H = height, pad = { l: 8, r: 60, t: 10, b: 24 };
+  const { svg, inner } = frame(W, H, pad);
+  const [lo, hi] = extent([...series.flatMap((x) => x.values), ...(zero ? [0] : [])]);
+  const n = dates.length;
+  const x = (i) => inner.l + ((inner.r - inner.l) * i) / Math.max(1, n - 1);
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  yAxis(svg, inner, lo, hi, y, fmt);
+  if (zero && lo < 0 && hi > 0) svg.append(s("line", { x1: inner.l, x2: inner.r, y1: y(0), y2: y(0), class: "ref" }));
+  for (const sr of series) svg.append(s("path", { d: path(sr.values, x, y), class: sr.cls }));
+  xLabels(svg, inner, dates, x, W < 600 ? 3 : 5);
+  svg.setAttribute("aria-label", series.map((x) => x.label).join(", "));
+  return svg;
+}
+
+/** Price fan: p5–p95 and p25–p75 bands with the median, by session ahead. */
+export function fanChart(fan, last) {
+  const W = canvasWidth(), H = 240, pad = { l: 8, r: 60, t: 10, b: 24 };
+  const { svg, inner } = frame(W, H, pad);
+  const pts = [{ session: 0, p5: last, p25: last, p50: last, p75: last, p95: last }, ...fan];
+  const [lo, hi] = extent(pts.flatMap((p) => [p.p5, p.p95]));
+  const n = pts.length;
+  const x = (i) => inner.l + ((inner.r - inner.l) * i) / Math.max(1, n - 1);
+  const y = (v) => inner.b - ((inner.b - inner.t) * (v - lo)) / (hi - lo);
+  yAxis(svg, inner, lo, hi, y, (v) => v.toFixed(hi - lo < 20 ? 2 : 0));
+  const band = (a, b, cls) => {
+    const d = "M" + pts.map((p, i) => `${x(i)},${y(p[b])}`).join("L") + "L" + [...pts].reverse().map((p, j) => `${x(n - 1 - j)},${y(p[a])}`).join("L") + "Z";
+    svg.append(s("path", { d, class: cls }));
+  };
+  band("p5", "p95", "band");
+  band("p25", "p75", "band band-inner");
+  svg.append(s("path", { d: path(pts.map((p) => p.p50), x, y), class: "price" }));
+  for (const k of [5, 21, 63]) {
+    if (k >= n) continue;
+    const t = s("text", { x: x(k), y: inner.b + 16, "text-anchor": "middle" }); t.textContent = `+${k}d`;
+    svg.append(t);
+  }
+  svg.setAttribute("aria-label", "Simulated price distribution by sessions ahead");
+  return svg;
+}

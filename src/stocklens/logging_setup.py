@@ -37,3 +37,7 @@ def configure(level: str = "INFO", as_json: bool = True) -> None:
     root.setLevel(level.upper())
     # uvicorn's own access log duplicates ours, without request IDs.
     logging.getLogger("uvicorn.access").disabled = True
+    # HTTP clients log every upstream URL, query string included, at INFO.
+    # Our own adapters log failures without URLs; keep the clients to warnings.
+    for name in ("httpx", "httpcore", "anthropic"):
+        logging.getLogger(name).setLevel(logging.WARNING)

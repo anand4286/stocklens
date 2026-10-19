@@ -64,11 +64,14 @@ flowchart LR
 | | SQL injection | SQLAlchemy Core with bound parameters only; no string-built SQL |
 | **Repudiation** | "The AI said X" with no record | `agent_runs` stores every run, trace, tokens, grounding; request IDs in every log line |
 | **Information disclosure** | Stack traces with internals | Generic 500 with request ID; detail only in logs |
-| | Secrets in logs or reprs | `SecretStr`; upstream error bodies never echoed; access log omits query and headers |
+| | Secrets in logs or reprs | `SecretStr`; upstream error bodies never echoed; access log omits query and headers; HTTP-client loggers held at WARNING so upstream URLs are never logged |
 | | Clickjacking, MIME sniffing, referrer leakage | `frame-ancestors 'none'`, `X-Frame-Options: DENY`, nosniff, strict referrer policy |
 | | XSS from news text | Every DOM node via `textContent`; CSP forbids inline script; links restricted to http(s) and `rel=noopener noreferrer nofollow` |
 | **Denial of service** | Request floods | Edge limits (nginx `limit_req`, Cloud Armor, WAF, ingress annotations) + in-app token bucket |
 | | Cost exhaustion through the agent | Model runs need a key by default; per-client agent limit; per-symbol cache; DB-counted daily budget; step ceiling |
+| | CPU exhaustion through history-rescoring endpoints (evidence, portfolio, forecasts, track record cost 0.5–2 s each) | Separate per-client `compute_rate_limit_per_minute`; results cached for an hour; portfolio capped at 25 symbols, each validated before any fetch |
+| | Storage growth through the GET-written ledgers (cycling tickers) | `ledger_daily_limit` caps new snapshot + forecast rows per UTC day; one row per symbol per session by unique key |
+| | Cross-origin reads via a permissive CORS setting | `cors_origins` validated as exact `scheme://host[:port]`; `*` and paths rejected at startup |
 | | Upstream slowness | httpx timeouts on every call; TTL cache; bounded pagination |
 | | Memory exhaustion | LRU-bounded limiter and cache; container memory limits; request body limits at the edge |
 | **Elevation of privilege** | Container escape after an RCE | Non-root UID 10001, read-only root FS, all capabilities dropped, no-new-privileges, seccomp RuntimeDefault, PSA `restricted`, no service-account token |
@@ -148,7 +151,12 @@ the store and roll the deployment.
 ## Supply chain
 
 - Dependencies pinned by range in `pyproject.toml`; Dependabot for pip, Docker and Actions.
-- CI: `pip-audit` (known CVEs), `bandit` (Python SAST), CodeQL (Python and JavaScript), `gitleaks` (secrets in history), Trivy (image CVEs, fails on fixable HIGH/CRITICAL).
+- **Every GitHub Action is pinned to a full commit SHA**, not a tag. A tag can
+  be moved to a different commit by whoever controls the action's repository;
+  a SHA cannot. Dependabot proposes SHA updates with the tag in a comment.
+- Workflows run with `contents: read` by default, elevate per job only where
+  needed, and check out with `persist-credentials: false`.
+- CI: `pip-audit` (known CVEs) plus a CycloneDX SBOM artifact, `bandit` (Python SAST), CodeQL `security-extended` (Python and JavaScript), `gitleaks` (secrets in full history), Trivy (image CVEs, fails on fixable HIGH/CRITICAL), OpenSSF Scorecard (public supply-chain grade).
 - Pre-commit: ruff, gitleaks, private-key detection.
 - Image: multi-stage, slim base, no compilers or pip in the runtime layer. Pin base images and deploy images by digest in production.
 - The UI loads nothing from third-party origins.
@@ -159,5 +167,9 @@ the store and roll the deployment.
 - The agent's daily budget is checked then incremented, not atomically; under a
   burst of concurrent first runs it can be exceeded by the concurrency level.
   A `SELECT … FOR UPDATE` counter row or Redis `INCR` closes this.
+- The hosted API console (`site/`, GitHub Pages) uses inline script and a
+  `connect-src http: https:` policy so "Try it" can reach a server the viewer
+  names. It renders only build-time demo data, through `textContent`, and holds
+  no credentials; a live server must opt in through exact-origin CORS.
 - `/docs` (Swagger UI) needs a looser CSP for its CDN bundle. Disable it in
   production if not wanted (`docs_url=None`) or front it with auth.

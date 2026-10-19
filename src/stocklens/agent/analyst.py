@@ -157,7 +157,8 @@ def rules_report(report: dict) -> RunResult:
     """A deterministic brief from the same numbers. No model, no cost, no variance."""
     started = time.monotonic()
     toolbox = Toolbox(report)
-    for name in ("get_overview", "get_signal_breakdown", "get_risk", "get_technicals"):
+    for name in ("get_overview", "get_signal_breakdown", "get_risk", "get_technicals",
+                 "get_quant", "get_market_structure", "get_research", "get_drivers"):
         toolbox.call(name, {})
     comp, q, risk = report["composite"], report["quote"], report["risk"]
     directional = [c for c in comp["contributions"] if c["kind"] == "directional"]
@@ -179,26 +180,51 @@ def rules_report(report: dict) -> RunResult:
     if risk.get("max_drawdown") is not None:
         cites.append(("risk.max_drawdown", risk["max_drawdown"]))
 
+    quant = report.get("quant") or {}
+    regime = quant.get("regime") or {}
+    garch = (quant.get("volatility") or {}).get("garch")
+    research = report.get("research") or {}
+    if garch:
+        cites.append(("quant.garch.persistence", garch["persistence"]))
+    attribution = (report.get("drivers") or {}).get("attribution")
+    if attribution:
+        cites.append(("drivers.attribution.market_beta", attribution["market_beta"]["value"]))
+    piotroski = (research.get("piotroski") or {}).get("score")
+    if piotroski is not None:
+        cites.append(("research.piotroski.score", piotroski))
+
     summary = (
         f"{report['symbol']} scores {comp['score']:+.2f} on a -1 to +1 scale with "
         f"{comp['confidence']:.0%} confidence, from {len(available)} of "
         f"{len(directional)} directional evidence families. "
-        + (f"Annualised volatility is {vol:.0%}. " if vol else "")
+        + (f"The regime reads {regime['trend'].replace('_', '-')}, so family weights are "
+           f"{'unchanged' if regime['trend'] == 'random' else 'tilted to match'}. "
+           if regime else "")
+        + (f"Annualised volatility is {vol:.0%}"
+           + (f", with GARCH persistence {garch['persistence']:.2f}. " if garch else ". ")
+           if vol else "")
         + (f"The strongest support is {bulls[0]['name'].replace('_', ' ')}. " if bulls else "")
         + (f"The main drag is {bears[0]['name'].replace('_', ' ')}." if bears else "")
-    )
+    )[:1500]
+    debate = research.get("debate") or {"bull": [], "bear": []}
+    key_risks = [
+        f"One-day 95% VaR of {risk['var_95_1d']:.1%}" if risk.get("var_95_1d") else
+        "Too little history for a historical VaR",
+        f"Worst drawdown in the last year {risk['max_drawdown']:.1%}"
+        if risk.get("max_drawdown") is not None else "Drawdown unavailable",
+    ]
+    altman = research.get("altman") or {}
+    if altman.get("zone") == "distress":
+        key_risks.append(altman["reading"])
+    if (research.get("beneish") or {}).get("flagged"):
+        key_risks.append(research["beneish"]["reading"])
     final = AnalystReport(
         stance=stance,
         headline=f"{report['symbol']}: {comp['stance'].lower()} on the blended evidence",
         summary=summary,
-        bull_points=[line(c) for c in bulls[:4]],
-        bear_points=[line(c) for c in bears[:4]],
-        key_risks=[
-            f"One-day 95% VaR of {risk['var_95_1d']:.1%}" if risk.get("var_95_1d") else
-            "Too little history for a historical VaR",
-            f"Worst drawdown in the last year {risk['max_drawdown']:.1%}"
-            if risk.get("max_drawdown") is not None else "Drawdown unavailable",
-        ],
+        bull_points=([line(c) for c in bulls[:3]] + debate["bull"][:2])[:5],
+        bear_points=([line(c) for c in bears[:3]] + debate["bear"][:2])[:5],
+        key_risks=key_risks[:5],
         cited_metrics=[{"metric": m, "value": v} for m, v in cites],
         confidence=comp["confidence"],
     )

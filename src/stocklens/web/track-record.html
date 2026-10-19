@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Track record · StockLens</title>
+<meta name="description" content="Open-source, explainable stock analytics with a guarded AI analyst agent.">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/track-record.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/static/logo.svg" alt="">StockLens</a>
+    <form class="search" role="search" action="/" autocomplete="off">
+      <input id="q" name="q" placeholder="Ticker, e.g. MSFT" maxlength="8" spellcheck="false" aria-label="Ticker symbol">
+    </form>
+    <nav class="nav">
+      <a href="/why">Why StockLens</a>
+      <a href="/track-record">Track record</a>
+      <a href="/portfolio">Portfolio lab</a>
+      <a href="/architecture">Architecture</a>
+      <a href="/docs">API</a>
+    </nav>
+  </div>
+</header>
+<div id="demo-banner" class="banner" hidden><div class="wrap">Demo mode: prices, news and fundamentals are synthetic and generated per ticker. Connect your own data keys to see real markets.</div></div>
+<main id="app" class="wrap"></main>
+<footer><div class="wrap">StockLens is open-source educational software. Nothing here is investment advice. Apache-2.0.</div></footer>
+</body>
+</html>

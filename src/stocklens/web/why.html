@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why StockLens</title>
+<meta name="description" content="Open-source, explainable stock analytics with a guarded AI analyst agent.">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/index.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/static/logo.svg" alt="">StockLens</a>
+    <form class="search" role="search" action="/" autocomplete="off">
+      <input id="q" name="q" placeholder="Ticker, e.g. MSFT" maxlength="8" spellcheck="false" aria-label="Ticker symbol">
+    </form>
+    <nav class="nav">
+      <a href="/why">Why StockLens</a>
+      <a href="/track-record">Track record</a>
+      <a href="/portfolio">Portfolio lab</a>
+      <a href="/architecture">Architecture</a>
+      <a href="/docs">API</a>
+    </nav>
+  </div>
+</header>
+<div id="demo-banner" class="banner" hidden><div class="wrap">Demo mode: prices, news and fundamentals are synthetic and generated per ticker. Connect your own data keys to see real markets.</div></div>
+<main class="wrap">
+  <section class="hero">
+    <h1>Every stock site shows you numbers. StockLens tells you which ones are true.</h1>
+    <p>Data aggregators are excellent at what they do: financial statements, ratios, analyst targets, charts. What none of them do is check. An analyst target is printed and never scored. An RSI is drawn and never tested on the stock it is drawn on. A beta is one number with no error bar. StockLens is built around the opposite question — <strong>would this have worked, and how sure can we be?</strong></p>
+  </section>
+
+  <section class="card">
+    <h2>The difference, line by line</h2>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Question</th><th>A typical stock data site</th><th>StockLens</th></tr></thead>
+      <tbody>
+        <tr><td>Where is it going?</td><td>Analyst price target and a buy/hold/sell count. Never scored afterwards.</td><td>A <strong>falsifiable forecast</strong> — P(up over 21 sessions) and a 1σ range — written to an append-only ledger before the outcome exists, resolved automatically, and graded with Brier skill and a reliability curve on a public <a href="/track-record">track record</a>.</td></tr>
+        <tr><td>Do the indicators work?</td><td>RSI, MACD, moving averages drawn on a chart.</td><td>The <strong>Evidence lab</strong> tests every signal family on this stock's own history, walk-forward: rank IC with t-stats on non-overlapping days, a permutation test, results by year and regime, a long/flat rule after costs, and a deflated Sharpe that charges for every test run.</td></tr>
+        <tr><td>How risky is it?</td><td>Beta, 52-week range.</td><td>Factor <strong>attribution</strong> (market, sector, own story) with Newey–West t-stats, upside vs downside beta, tail dependence, GARCH volatility forecast, and a <strong>filtered historical simulation</strong> of the price distribution with market-shock scenarios.</td></tr>
+        <tr><td>Is the business sound?</td><td>Ratios and statements.</td><td>Piotroski, Altman and Beneish computed from SEC filings with each input shown, red flags <strong>graded by distance past the line</strong>, and "unknown" kept separate from "fail".</td></tr>
+        <tr><td>What is it worth?</td><td>A fair-value estimate, one number.</td><td>A DCF that prints <strong>the sensitivity grid</strong> instead of a point, the share of value in the terminal, and a <strong>reverse DCF</strong>: the growth today's price already assumes, next to what the company has delivered.</td></tr>
+        <tr><td>Is this pattern meaningful?</td><td>—</td><td>Shape analogs and volume levels, each compared with a <strong>base rate</strong> and an out-of-sample test, with the multiple-comparisons warning printed beside them.</td></tr>
+        <tr><td>How diversified am I?</td><td>—</td><td>The <a href="/portfolio">Portfolio lab</a>: eigenvalues against random-matrix noise, effective number of bets, and five construction methods side by side on a shrunk covariance matrix.</td></tr>
+        <tr><td>Can I trust the AI summary?</td><td>—</td><td>An agent restricted to read-only tools over the page's own numbers. <strong>Every figure it cites is checked</strong> against what the tools returned, and the verification is shown.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <div class="grid">
+    <section class="card span-6 prose">
+      <h2>Principle 1 — noise is the null hypothesis</h2>
+      <p>Every "is this real?" test is run against a seeded random walk in the test suite. The analog search fires on 5% of random walks — its nominal rate. The regime detector calls 100 of 100 random walks "random". A tool that finds edges in noise is broken, and this one is checked for it on every commit.</p>
+    </section>
+    <section class="card span-6 prose">
+      <h2>Principle 2 — missing is not neutral</h2>
+      <p>A family with no data abstains; it lowers confidence instead of scoring zero. A Piotroski test that cannot be computed is "unknown", not "fail". A GARCH fit with fewer than 250 returns is withheld. A dash on this site means "we could not tell", and it is the honest answer more often than other sites admit.</p>
+    </section>
+    <section class="card span-6 prose">
+      <h2>Principle 3 — every number carries its rule</h2>
+      <p>"Earnings yield 7.3% against a 5% line", never "undervalued". The bull and bear case is derived from the measurements, so it cannot contain a claim the page does not support, and a short bear case for clean accounts is the correct output rather than a gap to pad.</p>
+    </section>
+    <section class="card span-6 prose">
+      <h2>Principle 4 — the model has to earn its weights</h2>
+      <p>The published weights are labelled as picked, not fitted. The regime tilt is labelled as a prior. The evaluation harness and the forecast ledger are the machinery that would earn or refute them — and if they refute them, the design records say what changes.</p>
+    </section>
+  </div>
+  <p class="small muted">StockLens is not a data terminal and does not try to out-cover one. It is a research engine that shows its working, tests its own claims, and keeps score.</p>
+</main>
+<footer><div class="wrap">StockLens is open-source educational software. Nothing here is investment advice. Apache-2.0.</div></footer>
+</body>
+</html>

@@ -15,6 +15,13 @@ directional accuracy that a rising market inflates:
 * **Hit rate vs base rate** — how often the sign was right, next to how often
   "always up" would have been right. A hit rate is meaningless without it.
 
+* **Distribution-free bounds** — the hit rate is reported with Wilson and
+  Hoeffding intervals on the independent days, so "54% right" arrives with
+  the range a sample this size can actually support.
+* **Regime A/B** — every statistic is computed twice, once with the published
+  weights and once with the regime-conditioned weights the page uses. The
+  tilt is a picked prior, and this is the test that would earn or refute it.
+
 Only price families are evaluated: filings and news are not point-in-time in
 the open data sources, and scoring them historically would leak the future.
 Overlapping horizons make consecutive days dependent, so the t-statistic is
@@ -33,6 +40,7 @@ from .analytics import signals
 from .analytics.composite import DEFAULT_WEIGHTS
 from .config import get_settings
 from .data import build_market_data, normalise_symbol
+from .quant import inference, regime
 
 PRICE_FAMILIES = ("technical", "momentum", "relative_strength")
 
@@ -61,10 +69,13 @@ def spearman(a: list[float], b: list[float]) -> float | None:
     return num / den if den else None
 
 
-def price_score(bars, bench) -> float | None:
+def price_score(bars, bench, regime_aware: bool = False) -> float | None:
     fams = [signals.technical(bars), signals.momentum(bars),
             signals.relative_strength(bars, bench)]
-    used = [(DEFAULT_WEIGHTS[f.name], f.score) for f in fams if f.available]
+    weights = DEFAULT_WEIGHTS
+    if regime_aware:
+        weights = regime.tilt_weights(DEFAULT_WEIGHTS, regime.classify([b.close for b in bars]))
+    used = [(weights[f.name], f.score) for f in fams if f.available]
     total = sum(w for w, _ in used)
     return sum(w * s for w, s in used) / total if total else None
 
@@ -78,12 +89,32 @@ def evaluate(symbols: list[str], horizon: int = 5, history: int = 750,
     length = min(len(b) for b in [bench, *panel.values()])
     panel = {s: b[-length:] for s, b in panel.items()}
     bench = bench[-length:]
+    base = _score_panel(panel, bench, length, horizon, warmup, step, regime_aware=False)
+    tilted = _score_panel(panel, bench, length, horizon, warmup, step, regime_aware=True)
+    delta = None
+    if base["rank_ic_mean"] is not None and tilted["rank_ic_mean"] is not None:
+        delta = round(tilted["rank_ic_mean"] - base["rank_ic_mean"], 4)
+    return {
+        "symbols": symbols,
+        "provider": market.sources["prices"],
+        "horizon_sessions": horizon,
+        **base,
+        "regime_conditioned": tilted,
+        "regime_ic_delta": delta,
+        "reading": ("Treat |t| < 2 as no evidence of an edge, and a hit-rate interval that "
+                    "contains the base rate as no evidence of skill. On demo data, which is a "
+                    "random walk by construction, that is the correct answer."),
+    }
 
+
+def _score_panel(panel, bench, length, horizon, warmup, step, regime_aware) -> dict:
     daily_ic, spreads, hits, ups, n_obs = [], [], 0, 0, 0
+    ind_hits = ind_n = 0
     for t in range(warmup, length - horizon, step):
         scores, fwd = [], []
+        independent_day = (t - warmup) % horizon == 0
         for bars in panel.values():
-            score = price_score(bars[: t + 1], bench[: t + 1])
+            score = price_score(bars[: t + 1], bench[: t + 1], regime_aware)
             if score is None:
                 continue
             ret = bars[t + horizon].close / bars[t].close - 1
@@ -92,6 +123,9 @@ def evaluate(symbols: list[str], horizon: int = 5, history: int = 750,
             hits += (score > 0) == (ret > 0)
             ups += ret > 0
             n_obs += 1
+            if independent_day:
+                ind_hits += (score > 0) == (ret > 0)
+                ind_n += 1
         ic = spearman(scores, fwd)
         if ic is not None:
             daily_ic.append((t, ic))
@@ -107,10 +141,9 @@ def evaluate(symbols: list[str], horizon: int = 5, history: int = 750,
     if len(independent) > 2 and statistics.stdev(independent) > 0:
         t_stat = statistics.fmean(independent) / (
             statistics.stdev(independent) / math.sqrt(len(independent)))
+    wilson = inference.wilson_interval(ind_hits, ind_n)
+    hoeffding = inference.hoeffding_interval(ind_hits, ind_n)
     return {
-        "symbols": symbols,
-        "provider": market.sources["prices"],
-        "horizon_sessions": horizon,
         "days_scored": len(daily_ic),
         "independent_days": len(independent),
         "observations": n_obs,
@@ -119,8 +152,11 @@ def evaluate(symbols: list[str], horizon: int = 5, history: int = 750,
         "top_minus_bottom_mean": round(statistics.fmean(spreads), 5) if spreads else None,
         "hit_rate": round(hits / n_obs, 4) if n_obs else None,
         "base_rate_up": round(ups / n_obs, 4) if n_obs else None,
-        "reading": ("Treat |t| < 2 as no evidence of an edge. On demo data, which is a random "
-                    "walk by construction, that is the correct answer."),
+        "hit_rate_independent": {
+            "observations": ind_n,
+            "wilson_95": wilson.as_dict() if wilson else None,
+            "hoeffding_95": hoeffding.as_dict() if hoeffding else None,
+        },
     }
 
 

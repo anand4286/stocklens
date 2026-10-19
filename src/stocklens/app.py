@@ -6,6 +6,12 @@
     GET  /api/v1/symbols/{symbol}/report     everything the page shows
     GET  /api/v1/symbols/{symbol}/history    the recorded composite ledger
     POST /api/v1/symbols/{symbol}/analyst    the AI analyst note
+    GET  /portfolio                          the portfolio lab
+    GET  /track-record  /why                 the track record; how StockLens differs
+    GET  /api/v1/symbols/{symbol}/forecasts  this symbol's ledger and simulated record
+    GET  /api/v1/track-record                live ledger + simulated record, scored
+    GET  /api/v1/symbols/{symbol}/evidence   every signal family tested on this stock
+    GET  /api/v1/portfolio?symbols=A,B,...   correlation spectrum and five weightings
     GET  /healthz  /readyz                   liveness and readiness probes
 
 There is no write endpoint for market state, no account, no order path.
@@ -18,7 +24,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -29,13 +35,23 @@ from .agent.analyst import rules_report, run_model_agent, to_response
 from .analytics import report as report_builder
 from .analytics.composite import DEFAULT_WEIGHTS
 from .config import Settings, get_settings
-from .data import DataUnavailable, MarketData, build_market_data, normalise_symbol
+from .data import DataUnavailable, MarketData, TTLCache, build_market_data, normalise_symbol
 from .db import Database
+from .evidence import test_families
+from .forecast import backfill
+from .forecast import scoring as forecast_scoring
+from .forecast.ledger import resolve_due
 from .logging_setup import configure
+from .quant import portfolio as portfolio_lab
 from .security import RateLimiter, SecurityMiddleware, has_valid_key, require_api_key_if_configured
 
 log = logging.getLogger(__name__)
 WEB = Path(__file__).parent / "web"
+
+#: The basket the simulated track record is walked over. Fixed, and printed on
+#: the page, so nobody can pick the basket after seeing the result.
+TRACK_RECORD_UNIVERSE = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "JPM", "XOM",
+                         "KO", "PFE", "CAT", "WMT")
 
 #: Swagger UI needs its CDN bundle and an inline bootstrap script, so /docs
 #: gets its own, looser policy. Nothing else on the site does.
@@ -72,6 +88,10 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
     app.state.market = market or build_market_data(settings)
     app.state.db = database or Database(settings.database_url)
     app.state.agent_limiter = RateLimiter(settings.agent_rate_limit_per_minute)
+    app.state.compute_limiter = RateLimiter(settings.compute_rate_limit_per_minute)
+    # Walk-forward records are deterministic for a given day's data and cost
+    # around a second; an hour's cache keeps them off the hot path.
+    app.state.records = TTLCache(3600, max_items=256)
     app.state.anthropic = anthropic_client
     if app.state.anthropic is None and settings.anthropic_api_key is not None:
         import anthropic
@@ -96,6 +116,15 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
         require_api_key_if_configured(request, settings)
 
     Authed = Depends(guard)
+
+    def compute_budget(request: Request) -> None:
+        """A tighter per-client limit for endpoints that cost real CPU."""
+        allowed, retry = app.state.compute_limiter.allow(request.state.client_ip)
+        if not allowed:
+            raise HTTPException(status_code=429, detail="compute rate limit exceeded",
+                                headers={"Retry-After": str(int(retry) + 1)})
+
+    Heavy = Depends(compute_budget)
     def parse_symbol(raw: str) -> str:
         try:
             return normalise_symbol(raw)
@@ -122,6 +151,18 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
     @app.get("/architecture", include_in_schema=False)
     def architecture_page() -> FileResponse:
         return FileResponse(WEB / "architecture.html")
+
+    @app.get("/why", include_in_schema=False)
+    def why_page() -> FileResponse:
+        return FileResponse(WEB / "why.html")
+
+    @app.get("/track-record", include_in_schema=False)
+    def track_record_page() -> FileResponse:
+        return FileResponse(WEB / "track-record.html")
+
+    @app.get("/portfolio", include_in_schema=False)
+    def portfolio_page() -> FileResponse:
+        return FileResponse(WEB / "portfolio.html")
 
     app.mount("/static", StaticFiles(directory=WEB / "static"), name="static")
 
@@ -160,11 +201,114 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
         sym = parse_symbol(symbol)
         data = build_report(sym)
         try:
-            app.state.db.record_snapshot(data, app.state.market.sources["prices"])
+            resolve_due(app.state.db, sym,
+                        app.state.market.bars(sym, report_builder.HISTORY_DAYS))
+            if app.state.db.forecasts_written_today() < settings.ledger_daily_limit:
+                app.state.db.record_snapshot(data, app.state.market.sources["prices"])
+                commit_forecast(sym, data)
+            else:
+                log.warning("ledger daily limit reached; nothing recorded",
+                            extra={"symbol": sym})
         except Exception:
             # The ledger is valuable but not worth failing a page view over.
             log.exception("could not record snapshot", extra={"symbol": sym})
         return data
+
+    def commit_forecast(sym: str, data: dict) -> None:
+        """Write today's forecast once (due ones are resolved by the caller).
+
+        Write-once in both directions: the first forecast of the session is the
+        one that counts (a refresh cannot replace it), and an outcome, once
+        recorded, is never revised. Gated by `ledger_daily_limit`.
+        """
+        if data.get("forecast"):
+            app.state.db.record_forecast({**data["forecast"], "symbol": sym})
+
+    def simulated_record(sym: str) -> dict:
+        def build() -> dict:
+            bars = app.state.market.bars(sym, report_builder.HISTORY_DAYS)
+            try:
+                bench = app.state.market.bars(settings.benchmark_symbol,
+                                              report_builder.HISTORY_DAYS)
+            except DataUnavailable:
+                bench = None
+            return backfill.symbol_record(bars, bench, symbol=sym)
+        return app.state.records.get_or_set(("symbol", sym), build)
+
+    @app.get("/api/v1/symbols/{symbol}/forecasts", tags=["track record"],
+             dependencies=[Authed, Heavy])
+    def symbol_forecasts(symbol: Symbol) -> dict:
+        """The live ledger for one symbol, and its simulated walk-forward record."""
+        sym = parse_symbol(symbol)
+        try:
+            sim = simulated_record(sym)
+        except DataUnavailable as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        live = app.state.db.forecasts(sym, limit=200)
+        return {
+            "symbol": sym,
+            "live": {"kind": "live", "forecasts": live,
+                     "scoring": forecast_scoring.score(live)},
+            "simulated": {**sim, "forecasts": sim["forecasts"][-120:]},
+        }
+
+    @app.get("/api/v1/symbols/{symbol}/evidence", tags=["analytics"],
+             dependencies=[Authed, Heavy])
+    def symbol_evidence(symbol: Symbol) -> dict:
+        """Walk-forward tests of every price family on this stock's own history.
+
+        Separate from the report because it re-scores ~500 sessions (~0.5 s);
+        cached for an hour, since the answer only changes with a new bar.
+        """
+        sym = parse_symbol(symbol)
+
+        def build() -> dict | None:
+            bars = app.state.market.bars(sym, report_builder.HISTORY_DAYS)
+            try:
+                bench = (app.state.market.bars(settings.benchmark_symbol,
+                                               report_builder.HISTORY_DAYS)
+                         if sym != settings.benchmark_symbol else None)
+            except DataUnavailable:
+                bench = None
+            return test_families(bars, bench)
+        try:
+            result = app.state.records.get_or_set(("evidence", sym), build)
+        except DataUnavailable as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        if result is None:
+            raise HTTPException(status_code=404, detail="needs at least 300 sessions of history")
+        return {"symbol": sym, **result}
+
+    @app.get("/api/v1/track-record", tags=["track record"], dependencies=[Authed, Heavy])
+    def track_record() -> dict:
+        """Every forecast StockLens has committed, scored — and the simulated record.
+
+        The live ledger is the record that cannot be cherry-picked: forecasts
+        are written before their outcome exists. The simulated record walks the
+        same model point-in-time over a fixed basket, so there is something to
+        grade from day one; it is labelled as simulated everywhere it appears.
+        """
+        def build() -> dict:
+            bench = app.state.market.bars(settings.benchmark_symbol, report_builder.HISTORY_DAYS)
+            panel = {}
+            for sym in TRACK_RECORD_UNIVERSE:
+                try:
+                    panel[sym] = app.state.market.bars(sym, report_builder.HISTORY_DAYS)
+                except DataUnavailable:
+                    continue
+            return backfill.track_record(panel, bench)
+        try:
+            sim = app.state.records.get_or_set(("universe",), build)
+        except DataUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+        live = app.state.db.forecasts(limit=2000)
+        return {
+            "universe": list(TRACK_RECORD_UNIVERSE),
+            "live": {"kind": "live", "count": len(live),
+                     "scoring": forecast_scoring.score(live), "recent": live[:50]},
+            "simulated": {k: v for k, v in sim.items() if k != "forecasts"},
+            "disclaimer": "Educational analytics, not investment advice.",
+        }
 
     @app.get("/api/v1/symbols/{symbol}/history", tags=["analytics"], dependencies=[Authed])
     def symbol_history(symbol: Symbol) -> dict:
@@ -173,6 +317,32 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
         for row in rows:
             row["created_at"] = row["created_at"].isoformat(timespec="seconds")
         return {"symbol": sym, "snapshots": rows}
+
+    @app.get("/api/v1/portfolio", tags=["analytics"], dependencies=[Authed, Heavy])
+    def portfolio(symbols: Annotated[str, Query(min_length=3, max_length=240)]) -> dict:
+        """Correlation structure of a basket and five ways to weight it.
+
+        Symbols are validated one by one before any upstream call, so the
+        query string can never reach a provider URL unparsed. A symbol with no
+        data is reported under `skipped` instead of failing the whole basket.
+        """
+        wanted = list(dict.fromkeys(parse_symbol(s) for s in symbols.split(",") if s.strip()))
+        if not 2 <= len(wanted) <= portfolio_lab.MAX_SYMBOLS:
+            raise HTTPException(status_code=422,
+                                detail=f"give 2 to {portfolio_lab.MAX_SYMBOLS} symbols")
+        closes, skipped = {}, {}
+        for sym in wanted:
+            try:
+                closes[sym] = [b.close for b in app.state.market.bars(sym, 300)]
+            except DataUnavailable as exc:
+                skipped[sym] = str(exc)
+        result = portfolio_lab.analyse(closes)
+        if result is None:
+            raise HTTPException(status_code=404,
+                                detail="not enough aligned history for at least two symbols")
+        dropped = {s: "too little usable history" for s in closes if s not in result["symbols"]}
+        return {**result, "skipped": {**skipped, **dropped}, "sources": app.state.market.sources,
+                "disclaimer": "Educational analytics, not investment advice."}
 
     @app.post("/api/v1/symbols/{symbol}/analyst", tags=["agent"], dependencies=[Authed])
     def analyst(symbol: Symbol, request: Request) -> dict:

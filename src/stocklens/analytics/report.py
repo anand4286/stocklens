@@ -11,12 +11,17 @@ import math
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-from ..data import Bar, DataUnavailable, MarketData
+from ..data import Bar, DataUnavailable, MarketData, sectors
+from ..forecast.model import make_forecast
+from ..quant import factors, inference, regime, scenarios, similarity, volatility, volume_profile
+from ..research import report as research_report
 from . import indicators as ind
 from . import risk, signals
 from .composite import DEFAULT_WEIGHTS, blend
 
-HISTORY_DAYS = 400
+#: Three years: GARCH needs 250 returns to fit, and the analog search needs
+#: room for ten non-overlapping 30-session windows plus their outcomes.
+HISTORY_DAYS = 756
 
 
 def _r(x, n=2):
@@ -75,6 +80,35 @@ def quote(bars: list[Bar]) -> dict:
     }
 
 
+def _aligned(bars: list[Bar], other: list[Bar]) -> tuple[list[float], list[float], list[str]]:
+    """Closes on the dates both series traded, oldest first."""
+    by_day = {b.day: b.close for b in other}
+    kept = [b for b in bars if b.day in by_day]
+    return [b.close for b in kept], [by_day[b.day] for b in kept], [b.day.isoformat() for b in kept]
+
+
+def drivers(bars: list[Bar], bench: list[Bar], sector_bars: list[Bar], sector: str | None,
+            sector_etf: str | None) -> dict:
+    """What moves this stock, and what a market shock would do to it."""
+    closes = [b.close for b in bars]
+    out: dict = {"sector": sector, "sector_label": sectors.SECTOR_LABELS.get(sector or ""),
+                 "sector_etf": sector_etf, "attribution": None, "shocks": [],
+                 "simulation": scenarios.simulate(closes)}
+    if not bench or bench is bars:
+        return out
+    stock, market, dates = _aligned(bars, bench)
+    sector_closes = None
+    if sector_bars:
+        by_day = {b.day.isoformat(): b.close for b in sector_bars}
+        keep = [i for i, d in enumerate(dates) if d in by_day]
+        stock, market = [stock[i] for i in keep], [market[i] for i in keep]
+        dates = [dates[i] for i in keep]
+        sector_closes = [by_day[d] for d in dates]
+    out["attribution"] = factors.attribution(stock, market, sector_closes, dates)
+    out["shocks"] = scenarios.shocks(stock, market, sector_closes)
+    return out
+
+
 def build(symbol: str, market: MarketData, benchmark_symbol: str = "SPY") -> dict:
     bars = market.bars(symbol, HISTORY_DAYS)
     if len(bars) < 2:
@@ -85,6 +119,15 @@ def build(symbol: str, market: MarketData, benchmark_symbol: str = "SPY") -> dic
         bench = []
     news = market.news(symbol, 30)
     fundamentals = market.fundamentals(symbol)
+    sector = sectors.sector_for_symbol(symbol, fundamentals.sic if fundamentals else None)
+    sector_etf = sectors.etf_for(sector)
+    sector_bars: list[Bar] = []
+    # A fund regressed on itself, or on the market it is, is a degenerate fit.
+    if sector_etf not in (symbol, benchmark_symbol) and symbol not in sectors.ETF_SECTORS:
+        try:
+            sector_bars = market.bars(sector_etf, HISTORY_DAYS)
+        except DataUnavailable:
+            sector_bars = []
     price = bars[-1].close
 
     fundamental_signal, checks = signals.fundamental(fundamentals)
@@ -99,9 +142,13 @@ def build(symbol: str, market: MarketData, benchmark_symbol: str = "SPY") -> dic
         signals.volume(bars),
         signals.news_flow(news),
     ]
-    composite = blend(family)
-
     closes = [b.close for b in bars]
+    # The regime is read first because it decides how much to trust each
+    # family: an oversold RSI is an invitation in a mean-reverting market and
+    # a warning in a trending one. A "random" regime leaves the weights alone.
+    market_regime = regime.classify(closes)
+    regime_weights = regime.tilt_weights(DEFAULT_WEIGHTS, market_regime)
+    composite = blend(family, regime_weights)
     technicals = {
         "rsi14": _r(ind.rsi_series(closes)[-1], 1),
         "sma20": _r(ind.sma(closes, 20)),
@@ -120,12 +167,30 @@ def build(symbol: str, market: MarketData, benchmark_symbol: str = "SPY") -> dic
         "sources": market.sources,
         "benchmark": benchmark_symbol,
         "quote": quote(bars),
-        "composite": composite.as_dict(),
-        "weights": DEFAULT_WEIGHTS,
+        "composite": {**composite.as_dict(), "regime": market_regime["trend"],
+                      "base_weights": DEFAULT_WEIGHTS, "regime_weights": regime_weights},
+        "weights": regime_weights,
         "technicals": technicals,
         "risk": risk.summary(closes, [b.close for b in bench] if bench else None),
+        "quant": {
+            "regime": market_regime,
+            "volatility": volatility.summary({
+                "open": [b.open for b in bars], "high": [b.high for b in bars],
+                "low": [b.low for b in bars], "close": closes}),
+            "sharpe": inference.sharpe_inference(risk.log_returns(closes[-253:])),
+        },
+        "drivers": drivers(bars, bench, sector_bars, sector, sector_etf if sector_bars else None),
+        "structure": {
+            "volume_profile": volume_profile.build(bars),
+            "analogs": similarity.analogs(bars),
+        },
+        # The call this report commits to. The route writes it to the ledger;
+        # it is built from the same bars, so the page and the record agree.
+        "forecast": make_forecast(bars, bench or None),
+        "research": research_report.build(fundamentals, price),
         "fundamentals": None if fundamentals is None else {
-            **{k: v for k, v in asdict(fundamentals).items() if k != "extra"},
+            **{k: v for k, v in asdict(fundamentals).items()
+               if k not in ("extra", "prior", "history")},
             "checks": [asdict(c) for c in checks],
         },
         "news": [

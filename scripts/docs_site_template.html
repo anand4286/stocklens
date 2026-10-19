@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src http: https:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>StockLens API Console</title>
+<meta name="description" content="Interactive API console for StockLens — the open-source stock research engine that keeps score.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236c5ce7'/%3E%3Cpath d='M9 22l7-13 7 13' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg:#0f1117; --surface:#1a1d27; --surface2:#242734; --surface3:#2d3044; --border:#2e3145;
+    --text:#e4e6f0; --muted:#8b8fa3; --accent:#6c5ce7; --accent-light:#a29bfe;
+    --green:#00b894; --yellow:#fdcb6e; --red:#e17055; --blue:#74b9ff; --orange:#f39c12; --pink:#fd79a8; --cyan:#81ecec;
+    --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+  a { color:var(--accent-light); text-decoration:none; } a:hover { text-decoration:underline; }
+  code, .mono { font-family:var(--mono); }
+  .header { background:linear-gradient(135deg,#1a1d27 0%,#2d1b69 100%); padding:2rem 2rem 0; border-bottom:1px solid var(--border); }
+  .header-inner { max-width:1400px; margin:0 auto; }
+  .brand { display:flex; align-items:center; gap:.8rem; }
+  .logo { width:40px; height:40px; border-radius:10px; background:var(--accent); display:grid; place-items:center; font-weight:800; font-size:1.2rem; }
+  .header h1 { font-size:1.8rem; font-weight:700; }
+  .header h1 span { color:var(--accent-light); }
+  .subtitle { color:var(--muted); font-size:.95rem; margin-top:.3rem; max-width:860px; }
+  .meta { display:flex; gap:.6rem; margin-top:.9rem; font-size:.8rem; color:var(--muted); flex-wrap:wrap; }
+  .meta span { background:var(--surface); padding:.25rem .7rem; border-radius:4px; border:1px solid var(--border); }
+  .meta a { background:var(--accent); color:#fff; padding:.25rem .8rem; border-radius:4px; font-weight:600; }
+  .tabs { display:flex; gap:.25rem; margin-top:1.2rem; overflow-x:auto; }
+  .tab { padding:.7rem 1.1rem; border:0; background:transparent; color:var(--muted); font:inherit; font-weight:600; font-size:.9rem; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--text); border-bottom-color:var(--accent-light); }
+  .content { max-width:1400px; margin:0 auto; padding:1.5rem 2rem 3rem; }
+  .panel { display:none; } .panel.active { display:block; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem; margin-bottom:1.6rem; }
+  .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; }
+  .stat-card .number { font-size:1.8rem; font-weight:700; color:var(--accent-light); line-height:1.2; }
+  .stat-card .label { font-size:.8rem; color:var(--muted); margin-top:.2rem; }
+  .controls { display:flex; gap:.8rem; margin-bottom:1.4rem; flex-wrap:wrap; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.8rem; }
+  .search { flex:1; min-width:220px; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:.6rem 1rem; color:var(--text); font-size:.9rem; outline:none; }
+  .search:focus { border-color:var(--accent); }
+  .chip { padding:.45rem .9rem; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--muted); cursor:pointer; font-size:.82rem; font-weight:500; }
+  .chip:hover { border-color:var(--accent); color:var(--text); }
+  .chip.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .server { display:flex; gap:.5rem; align-items:center; font-size:.8rem; color:var(--muted); }
+  .server input { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:.45rem .7rem; color:var(--text); font-family:var(--mono); font-size:.8rem; width:230px; }
+  .service-section { margin-bottom:1.4rem; }
+  .service-header { display:flex; align-items:center; gap:.8rem; padding:1rem 1.2rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; cursor:pointer; user-select:none; }
+  .service-header.open { border-radius:8px 8px 0 0; }
+  .service-header:hover { background:var(--surface2); }
+  .service-header .icon { font-size:1.4rem; }
+  .service-header h2 { font-size:1.05rem; font-weight:600; }
+  .service-header .blurb { color:var(--muted); font-size:.85rem; flex:1; }
+  .service-header .count { color:var(--muted); font-size:.82rem; }
+  .chev { color:var(--muted); transition:transform .2s; } .open .chev { transform:rotate(90deg); }
+  .ops { border:1px solid var(--border); border-top:0; border-radius:0 0 8px 8px; overflow:hidden; }
+  .op { border-bottom:1px solid var(--border); background:var(--surface); }
+  .op:last-child { border-bottom:0; }
+  .op-row { display:grid; grid-template-columns:70px minmax(260px,1.2fr) 1fr auto; gap:1rem; padding:.8rem 1.2rem; align-items:center; cursor:pointer; }
+  .op-row:hover { background:var(--surface2); }
+  .op.expanded .op-row { background:var(--surface2); }
+  .method { display:inline-block; padding:.15rem .5rem; border-radius:3px; font-size:.74rem; font-weight:700; text-align:center; font-family:var(--mono); }
+  .m-GET { background:rgba(0,184,148,.15); color:var(--green); } .m-POST { background:rgba(116,185,255,.15); color:var(--blue); }
+  .endpoint { font-family:var(--mono); font-size:.84rem; color:var(--accent-light); word-break:break-all; }
+  .op-title { font-size:.88rem; } .op-title small { color:var(--muted); display:block; font-size:.78rem; }
+  .tag { display:inline-block; padding:.12rem .5rem; border-radius:3px; font-size:.72rem; font-weight:600; }
+  .t-live { background:rgba(0,184,148,.15); color:var(--green); }
+  .op-body { display:none; padding:0 1.2rem 1.4rem; background:var(--surface2); }
+  .op.expanded .op-body { display:block; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; }
+  .box { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:1rem; }
+  .box h4 { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:.6rem; }
+  .box p { font-size:.88rem; }
+  .why { border-left:3px solid var(--accent); }
+  table.kv { width:100%; border-collapse:collapse; font-size:.82rem; }
+  table.kv td, table.kv th { padding:.4rem .5rem; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+  table.kv th { color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }
+  table.kv td:first-child { font-family:var(--mono); color:var(--cyan); white-space:nowrap; }
+  pre.curl { font-family:var(--mono); font-size:.8rem; color:var(--yellow); white-space:pre-wrap; word-break:break-all; }
+  .resp-head { display:flex; justify-content:space-between; align-items:center; gap:.6rem; margin-bottom:.5rem; flex-wrap:wrap; }
+  .btn { background:var(--accent); color:#fff; border:0; border-radius:5px; padding:.4rem .9rem; font-size:.8rem; font-weight:600; cursor:pointer; }
+  .btn.ghost { background:transparent; border:1px solid var(--border); color:var(--muted); }
+  .btn:hover { filter:brightness(1.1); }
+  .code { font-size:.8rem; font-weight:700; } .c-2 { color:var(--green); } .c-4, .c-5 { color:var(--red); }
+  .json { font-family:var(--mono); font-size:.78rem; max-height:520px; overflow:auto; line-height:1.55; }
+  .json details { margin-left:1rem; } .json summary { cursor:pointer; list-style:none; margin-left:-1rem; }
+  .json summary::-webkit-details-marker { display:none; }
+  .json summary::before { content:"▸ "; color:var(--muted); } .json details[open] > summary::before { content:"▾ "; }
+  .json .k { color:var(--accent-light); } .json .s { color:var(--green); } .json .n { color:var(--orange); } .json .b { color:var(--pink); } .json .z { color:var(--muted); }
+  .json .row { margin-left:1rem; } .json .hint { color:var(--muted); }
+  .diagram-card { background:#f6f7f9; border-radius:10px; padding:1rem; margin-bottom:1.2rem; overflow-x:auto; }
+  .diagram { width:100%; min-width:760px; height:auto; }
+  .diagram .box { fill:#f0f2f5; stroke:#c9ced8; stroke-width:1.5; } .diagram .box.hl { stroke:#2456d6; }
+  .diagram .zone { fill:none; stroke:#6b7280; stroke-dasharray:5 4; }
+  .diagram text { fill:#11161d; font-family:inherit; font-size:13px; } .diagram text.sub { fill:#5b6573; font-size:11px; }
+  .diagram .edge { stroke:#5b6573; stroke-width:1.4; fill:none; marker-end:url(#arrow); } .diagram #arrow path { fill:#5b6573; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem 1.2rem; }
+  .card h3 { font-size:1rem; margin-bottom:.4rem; } .card p { color:var(--muted); font-size:.86rem; }
+  .card code { color:var(--cyan); font-size:.8rem; }
+  h2.section { font-size:1.25rem; margin:0 0 .4rem; } p.lead { color:var(--muted); margin-bottom:1.2rem; max-width:900px; }
+  .legend { display:flex; gap:1.2rem; flex-wrap:wrap; font-size:.8rem; color:var(--muted); margin:1rem 0 0; }
+  .no-results { text-align:center; color:var(--muted); padding:3rem; }
+  .hidden { display:none !important; }
+  footer { border-top:1px solid var(--border); color:var(--muted); font-size:.8rem; padding:1.4rem 2rem; text-align:center; }
+  @media (max-width: 900px) { .op-row { grid-template-columns:60px 1fr; } .op-row .op-title, .op-row .tag { display:none; } .grid2 { grid-template-columns:1fr; } .content, .header { padding-left:1rem; padding-right:1rem; } }
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <div class="brand"><div class="logo">S</div><h1>StockLens <span>API Console</span></h1></div>
+    <p class="subtitle">The open-source stock research engine that keeps score. Every endpoint below is generated from the live OpenAPI document, and every example response was captured from a real call on deterministic demo data.</p>
+    <div class="meta" id="meta"></div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-panel="console">🧭 API console</button>
+      <button class="tab" data-panel="architecture">🏗️ Architecture</button>
+      <button class="tab" data-panel="anatomy">🧬 Report anatomy</button>
+      <button class="tab" data-panel="agent">🤖 Agent tools</button>
+      <button class="tab" data-panel="start">🚀 Quick start</button>
+    </nav>
+  </div>
+</header>
+
+<main class="content">
+  <section class="panel active" id="panel-console">
+    <div class="stats" id="stats"></div>
+    <div class="controls">
+      <input class="search" id="search" placeholder="Search endpoints, fields, concepts… (e.g. brier, garch, hrp)" aria-label="Search">
+      <div id="groupChips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+      <label class="server">Server <input id="server" value="http://127.0.0.1:8080" spellcheck="false" aria-label="Server base URL"></label>
+    </div>
+    <div id="services"></div>
+    <p class="no-results hidden" id="noResults">No endpoints match.</p>
+  </section>
+
+  <section class="panel" id="panel-architecture">
+    <h2 class="section">A model that keeps score</h2>
+    <p class="lead">Most analytics stacks end at "show the number". StockLens is organised around what happens next: every claim is committed, checked against what happened, and fed back.</p>
+    {{DIAGRAMS}}
+    <div class="cards">
+      <div class="card"><h3>Pure engines</h3><p>analytics, quant, research, forecast and evidence are pure Python over plain dataclasses: no I/O, no framework, no NumPy. One report object is shared by the page, the agent and the evaluator.</p></div>
+      <div class="card"><h3>Append-only state</h3><p>Snapshots, the forecast ledger and agent runs are append-only. A forecast is written before its outcome exists and resolved exactly once.</p></div>
+      <div class="card"><h3>Tested on noise</h3><p>Each estimator is tested on a seeded random walk, where it must find nothing, and on a planted signal, where it must find it.</p></div>
+      <div class="card"><h3>Secure by default</h3><p>Strict CSP, token-bucket limits, constant-time API keys, ticker allowlist before any upstream URL, non-root read-only container, default-deny egress.</p></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-anatomy">
+    <h2 class="section">Anatomy of <code>/api/v1/symbols/{symbol}/report</code></h2>
+    <p class="lead">One object, computed in a single pass, read by the page, the AI analyst and the evaluation harness alike. Click a section to see its example.</p>
+    <div class="cards" id="anatomy"></div>
+    <div class="box" style="margin-top:1rem"><h4 id="anatomyTitle">Select a section</h4><div class="json" id="anatomyJson"></div></div>
+  </section>
+
+  <section class="panel" id="panel-agent">
+    <h2 class="section">The analyst's tools</h2>
+    <p class="lead">Every tool is read-only, takes no symbol, URL or free-form query, and is bound server-side to one report. The terminal <code>submit_report</code> is re-validated and every cited figure is checked against what these tools returned.</p>
+    <div class="cards" id="tools"></div>
+  </section>
+
+  <section class="panel" id="panel-start">
+    <h2 class="section">Run it locally in a minute</h2>
+    <p class="lead">No keys needed: demo mode generates a deterministic factor-model market per ticker.</p>
+    <div class="grid2">
+      <div class="box"><h4>Install and run</h4><pre class="curl">git clone https://github.com/anand4286/stocklens.git
+cd stocklens
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -e ".[dev]"
+uvicorn --factory stocklens.app:app_factory --port 8080</pre></div>
+      <div class="box"><h4>Call the API</h4><pre class="curl">curl -s localhost:8080/api/v1/symbols/MSFT/report \
+  | jq '{call: .forecast.p_up,
+         regime: .quant.regime.trend,
+         beta: .drivers.attribution.market_beta.value}'
+
+curl -s localhost:8080/api/v1/track-record \
+  | jq '.simulated.scoring.verdict'</pre></div>
+      <div class="box"><h4>Real data (optional, free tiers)</h4><pre class="curl">STOCKLENS_DATA_PROVIDER=alpaca
+STOCKLENS_ALPACA_API_KEY_ID=…
+STOCKLENS_ALPACA_API_SECRET_KEY=…
+STOCKLENS_SEC_USER_AGENT="Your Name you@example.com"
+STOCKLENS_ANTHROPIC_API_KEY=…</pre><p style="margin-top:.6rem;color:var(--muted);font-size:.82rem">Secrets live only in your environment or a secret manager — never in the repository.</p></div>
+      <div class="box"><h4>"Try it" from this page</h4><p>Set <b>Server</b> above to your instance and press <b>Send</b> on any endpoint. Your instance must allow this origin: <code>STOCKLENS_CORS_ORIGINS=["https://anand4286.github.io"]</code>. Calls go from your browser to your server only.</p></div>
+    </div>
+  </section>
+</main>
+<footer>StockLens v{{VERSION}} · Apache-2.0 · Educational analytics, not investment advice · <a href="https://github.com/anand4286/stocklens">github.com/anand4286/stocklens</a></footer>
+
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const $ = (s) => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c !== null && c !== undefined) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+};
+
+// header + stats
+$("#meta").append(
+  el("span", {}, `v${D.version}`), el("span", {}, `OpenAPI ${D.openapi}`), el("span", {}, `${D.ops.length} endpoints`),
+  el("span", {}, `${D.tools.length} agent tools`), el("span", {}, `generated ${D.generated}`), el("span", {}, "examples: demo data"),
+  el("a", { href: "https://github.com/anand4286/stocklens" }, "★ GitHub"));
+const stats = [
+  [D.ops.length, "endpoints"], [5, "pure-Python engines"], [D.tools.length, "read-only agent tools"],
+  [D.sections.length, "report sections"], [D.tests, "tests (null + planted signal)"], ["0", "keys needed for demo"],
+];
+$("#stats").append(...stats.map(([n, l]) => el("div", { class: "stat-card" }, el("div", { class: "number" }, n), el("div", { class: "label" }, l))));
+
+// tabs
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === `panel-${t.dataset.panel}`));
+}));
+
+// JSON tree, built with textContent only
+function tree(v, key, depth = 0) {
+  const label = key === undefined ? [] : [el("span", { class: "k" }, JSON.stringify(key)), ": "];
+  if (v === null) return el("div", { class: "row" }, ...label, el("span", { class: "z" }, "null"));
+  if (Array.isArray(v) || typeof v === "object") {
+    const entries = Array.isArray(v) ? v.map((x, i) => [i, x]) : Object.entries(v);
+    const open = depth < 1;
+    const d = el("details", open ? { open: "" } : {}, el("summary", {}, ...label,
+      el("span", { class: "hint" }, Array.isArray(v) ? `[${entries.length}]` : `{${entries.length}}`)));
+    for (const [k, x] of entries) d.append(tree(x, Array.isArray(v) ? undefined : k, depth + 1));
+    return d;
+  }
+  const cls = typeof v === "string" ? (v.startsWith("… ") ? "z" : "s") : typeof v === "number" ? "n" : "b";
+  return el("div", { class: "row" }, ...label, el("span", { class: cls }, typeof v === "string" ? JSON.stringify(v) : String(v)));
+}
+
+// console
+let group = "all";
+$("#groupChips").append(...[{ key: "all", name: "All" }, ...D.groups].map((g) =>
+  el("button", { class: `chip ${g.key === "all" ? "active" : ""}`, "data-g": g.key, onclick: (e) => {
+    group = g.key; document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c === e.currentTarget)); render();
+  } }, g.icon ? `${g.icon} ${g.name}` : g.name)));
+$("#search").addEventListener("input", render);
+
+function curl(op) {
+  const base = $("#server").value.replace(/\/$/, "");
+  return `curl -s${op.method === "POST" ? " -X POST" : ""} "${base}${op.example_url}"${op.method === "POST" ? "" : " | jq"}`;
+}
+
+function opNode(op) {
+  const wrap = el("div", { class: "op" });
+  const respCode = el("span", { class: `code c-${String(op.status_code)[0]}` }, `${op.status_code} · example`);
+  const respBody = el("div", { class: "json" }, op.example === null ? el("span", { class: "z" }, "(no JSON body)") : tree(op.example));
+  const curlPre = el("pre", { class: "curl" }, curl(op));
+  const send = el("button", { class: "btn", onclick: async (e) => {
+    e.stopPropagation();
+    const base = $("#server").value.replace(/\/$/, "");
+    if (!/^https?:\/\/[^\s/]+/.test(base)) { respCode.textContent = "enter a server URL"; return; }
+    respCode.textContent = "sending…";
+    try {
+      const r = await fetch(base + op.example_url, { method: op.method, headers: { Accept: "application/json" } });
+      const body = await r.json().catch(() => null);
+      respCode.className = `code c-${String(r.status)[0]}`; respCode.textContent = `${r.status} · live from ${base}`;
+      respBody.replaceChildren(body === null ? el("span", { class: "z" }, "(no JSON body)") : tree(body));
+    } catch (err) {
+      respCode.className = "code c-4"; respCode.textContent = "unreachable — is the server running with this origin in STOCKLENS_CORS_ORIGINS?";
+    }
+  } }, "Send ▶");
+  const reset = el("button", { class: "btn ghost", onclick: (e) => { e.stopPropagation(); respCode.className = `code c-${String(op.status_code)[0]}`; respCode.textContent = `${op.status_code} · example`; respBody.replaceChildren(op.example === null ? el("span", { class: "z" }, "(no JSON body)") : tree(op.example)); } }, "Example");
+  wrap.append(
+    el("div", { class: "op-row", onclick: () => { wrap.classList.toggle("expanded"); curlPre.textContent = curl(op); } },
+      el("span", { class: `method m-${op.method}` }, op.method), el("span", { class: "endpoint" }, op.path),
+      el("span", { class: "op-title" }, op.title, el("small", {}, op.summary)), el("span", { class: `tag t-${op.status}` }, op.status)),
+    el("div", { class: "op-body" },
+      el("div", { class: "grid2" },
+        el("div", {},
+          op.what ? el("div", { class: "box" }, el("h4", {}, "What it returns"), el("p", {}, op.what)) : null,
+          op.why ? el("div", { class: "box why", style: "margin-top:.8rem" }, el("h4", {}, "Why it matters"), el("p", {}, op.why)) : null,
+          op.params.length ? el("div", { class: "box", style: "margin-top:.8rem" }, el("h4", {}, "Parameters"),
+            el("table", { class: "kv" }, el("tr", {}, el("th", {}, "name"), el("th", {}, "in"), el("th", {}, "type"), el("th", {}, "required")),
+              op.params.map((p) => el("tr", {}, el("td", {}, p.name), el("td", {}, p.in), el("td", {}, p.type), el("td", {}, p.required ? "yes" : "no"))))) : null,
+          op.fields.length ? el("div", { class: "box", style: "margin-top:.8rem" }, el("h4", {}, "Key fields"),
+            el("table", { class: "kv" }, op.fields.map(([f, d]) => el("tr", {}, el("td", {}, f), el("td", {}, d))))) : null,
+          el("div", { class: "box", style: "margin-top:.8rem" }, el("h4", {}, "Request"), curlPre)),
+        el("div", { class: "box" }, el("div", { class: "resp-head" }, el("h4", { style: "margin:0" }, "Response"), respCode, el("span", {}, reset, " ", send)), respBody))));
+  return wrap;
+}
+
+function matches(op, q) {
+  if (!q) return true;
+  const hay = [op.path, op.title, op.summary, op.what, op.why, op.doc, ...op.fields.flat()].join(" ").toLowerCase();
+  return q.split(/\s+/).every((w) => hay.includes(w));
+}
+
+const open = new Set(["stock", "record"]);
+function render() {
+  const q = $("#search").value.trim().toLowerCase();
+  const root = $("#services"); root.replaceChildren();
+  let shown = 0;
+  for (const g of D.groups) {
+    if (group !== "all" && group !== g.key) continue;
+    const ops = D.ops.filter((o) => o.group === g.key && matches(o, q));
+    if (!ops.length) continue;
+    shown += ops.length;
+    const isOpen = open.has(g.key) || q || group !== "all";
+    const body = el("div", { class: `ops ${isOpen ? "" : "hidden"}` }, ops.map(opNode));
+    const head = el("div", { class: `service-header ${isOpen ? "open" : ""}`, onclick: () => {
+      body.classList.toggle("hidden"); head.classList.toggle("open");
+      if (open.has(g.key)) open.delete(g.key); else open.add(g.key);
+    } }, el("span", { class: "icon" }, g.icon), el("h2", {}, g.name), el("span", { class: "blurb" }, g.blurb), el("span", { class: "count" }, `${ops.length} endpoint${ops.length > 1 ? "s" : ""}`), el("span", { class: "chev" }, "▶"));
+    root.append(el("div", { class: "service-section" }, head, body));
+  }
+  $("#noResults").classList.toggle("hidden", shown > 0);
+}
+render();
+
+// anatomy
+const report = D.ops.find((o) => o.path === "/api/v1/symbols/{symbol}/report")?.example || {};
+$("#anatomy").append(...D.sections.map(([k, d]) => el("div", { class: "card", style: "cursor:pointer", onclick: () => {
+  $("#anatomyTitle").textContent = `report.${k}`;
+  $("#anatomyJson").replaceChildren(report[k] === undefined ? el("span", { class: "z" }, "not in example") : tree(report[k], undefined, 0));
+} }, el("h3", {}, el("code", {}, k)), el("p", {}, d))));
+
+// tools
+$("#tools").append(...D.tools.map((t) => el("div", { class: "card" },
+  el("h3", {}, el("code", {}, t.name)), el("p", {}, t.description),
+  el("p", { style: "margin-top:.4rem" }, t.input.length ? `input: ${t.input.join(", ")}` : "input: none"))));
+</script>
+</body>
+</html>

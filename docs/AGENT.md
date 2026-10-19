@@ -43,6 +43,10 @@ stateDiagram-v2
 | `get_technicals` | none | RSI, SMAs, MACD histogram, Bollinger, ATR, stochastic |
 | `get_fundamentals` | none | annual figures and the eight checks, or `available: false` |
 | `get_risk` | none | volatility, drawdown, VaR/ES, Sharpe/Sortino, beta, Hurst, VR, ranges |
+| `get_quant` | none | trend and volatility regime with its reason, regime-conditioned weights, GARCH fit and forecast, range estimators, distribution shape, probabilistic Sharpe |
+| `get_market_structure` | none | point of control, value area, out-of-sample level test; shape analogs vs base rate with the significance verdict and the multiple-comparisons warning |
+| `get_research` | none | Piotroski, Altman, Beneish, Sloan accruals, multiples, reverse DCF, raised red flags with severity, the derived bull/bear points |
+| `get_drivers` | none | market/sector betas with Newey–West t, alpha, variance shares, up/down beta, crash co-movement, market-shock scenarios, simulated price percentiles, the committed forecast |
 | `get_news` | `limit` (clamped 1–15) | headlines inside `untrusted_headlines` |
 | `submit_report` | the note | terminal; validated and grounded |
 

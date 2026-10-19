@@ -193,6 +193,14 @@ Only price families are evaluated. The free fundamentals and news sources are
 not point-in-time — a 10-K filed in February would be visible on January
 dates — so including them would leak the future and flatter the result.
 
+## Deep analytics
+
+Volatility models, regime detection, inference, volume at price, shape analogs,
+portfolio construction and forensic accounting have their own reference:
+[QUANT.md](QUANT.md). The blend now takes regime-conditioned weights
+([ADR 0006](adr/0006-regime-conditioned-weights.md)); with a `random` regime they
+equal the defaults below exactly.
+
 ## Known limitations
 
 - Weights and thresholds are picked, documented defaults; nothing in the open
@@ -201,7 +209,11 @@ dates — so including them would leak the future and flatter the result.
 - The sentiment lexicon is deliberately small and English-only.
 - The IEX free feed covers a fraction of consolidated volume, which affects the
   volume family on real data.
-- Demo data is a random walk; any edge measured on it is noise by construction.
+- Demo data is a factor model (market + sector + GARCH idiosyncratic noise)
+  with no expected-return signal; any edge measured on it is noise by
+  construction, while correlations and volatility clustering are realistic.
+- Altman, Beneish and Piotroski were calibrated on non-financial companies;
+  their readings on banks and insurers are not meaningful.
 
 ## References
 

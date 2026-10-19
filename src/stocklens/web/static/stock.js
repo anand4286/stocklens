@@ -4,10 +4,12 @@
 
 import { DASH, api, compact, h, money, num, pct, signed, tone, wireSearch } from "./common.js";
 import { macdChart, oscillator, priceChart, tail } from "./charts.js";
+import { callCard, driversTab, evidenceTab, quant, research, structure } from "./panels.js";
 
 const TABS = [
   ["overview", "Overview"], ["technicals", "Technicals"], ["fundamentals", "Fundamentals"],
-  ["news", "News"], ["risk", "Risk"], ["analyst", "AI Analyst"],
+  ["research", "Research"], ["evidence", "Evidence"], ["drivers", "Drivers"], ["risk", "Risk"],
+  ["quant", "Quant"], ["structure", "Structure"], ["news", "News"], ["analyst", "AI Analyst"],
 ];
 const FAMILY_LABEL = {
   technical: "Technical", momentum: "Momentum", relative_strength: "Relative strength",
@@ -35,12 +37,16 @@ async function main() {
 
   const panels = {
     overview: overview(report), technicals: technicals(report), fundamentals: fundamentals(report),
-    news: news(report), risk: risk(report), analyst: analyst(report, meta),
+    research: research(report), news: news(report), risk: risk(report), quant: quant(report),
+    drivers: driversTab(report), evidence: null,
+    structure: structure(report), analyst: analyst(report, meta),
   };
   const tabBar = h("div", { class: "tabs", role: "tablist" });
   const body = h("div");
   const select = (key) => {
     for (const btn of tabBar.children) btn.setAttribute("aria-selected", String(btn.dataset.key === key));
+    // The evidence lab re-scores the whole history, so it is fetched on first open.
+    if (key === "evidence" && !panels.evidence) panels.evidence = evidenceTab(report);
     body.replaceChildren(panels[key]);
     history.replaceState(null, "", `#${key}`);
   };
@@ -48,7 +54,7 @@ async function main() {
     const btn = h("button", { role: "tab", "data-key": key, onclick: () => select(key) }, label);
     tabBar.append(btn);
   }
-  root.replaceChildren(h("div", { class: "wrap" }, header(report), composite(report), tabBar, body));
+  root.replaceChildren(h("div", { class: "wrap" }, header(report), composite(report), callCard(report), tabBar, body));
   const initial = location.hash.slice(1);
   select(TABS.some(([k]) => k === initial) ? initial : "overview");
 }
@@ -79,7 +85,8 @@ function composite(r) {
         `Confidence ${pct(c.confidence, 0)} (evidence coverage ${pct(c.coverage, 0)}` +
         (c.conviction === null ? "" : `, conviction ${signed(c.conviction)}`) + "). " +
         `Rule: constructive at ≥ ${c.rule.constructive_at}, cautious at ≤ ${c.rule.cautious_at}, ` +
-        `and no stance below ${pct(c.rule.min_confidence, 0)} confidence. Weighted mean of the available directional families.`)));
+        `and no stance below ${pct(c.rule.min_confidence, 0)} confidence. Weighted mean of the available directional families` +
+        (c.regime ? `, with weights ${c.regime === "random" ? "as published (no regime detected)" : `tilted for a ${c.regime.replace("_", "-")} regime — see Quant`}.` : "."))));
 }
 
 function kv(pairs) {

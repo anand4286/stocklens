@@ -17,6 +17,9 @@
       <input id="q" name="q" placeholder="Ticker, e.g. MSFT" maxlength="8" spellcheck="false" aria-label="Ticker symbol">
     </form>
     <nav class="nav">
+      <a href="/why">Why StockLens</a>
+      <a href="/track-record">Track record</a>
+      <a href="/portfolio">Portfolio lab</a>
       <a href="/architecture">Architecture</a>
       <a href="/docs">API</a>
     </nav>
@@ -26,7 +29,52 @@
 <main class="wrap">
   <section class="hero">
     <h1>How StockLens is built</h1>
-    <p>A single FastAPI service, a pure analytics core, a bounded AI agent, and a persistence layer — behind an edge that terminates TLS and rate-limits, with egress restricted to three named hosts.</p>
+    <p>One stateless FastAPI service. Inside it, five engines of pure functions — scoring, quant, research, forecasting and evidence — feed a single report that the page, the AI agent and the evaluation harness all read. Around it, a closed loop that commits forecasts, grades them, and decides whether the model has earned its weights.</p>
+  </section>
+
+  <section class="card">
+    <h2>The idea in one picture: a model that keeps score</h2>
+    <p class="small muted">Most analytics stacks end at "show the number". StockLens's architecture is organised around what happens after: every claim is committed, checked against what happened, and fed back.</p>
+    <svg class="diagram" viewBox="0 0 960 340" role="img" aria-labelledby="loop-title">
+      <title id="loop-title">The proof loop: report, commit, ledger, resolve, grade, decide, back to report</title>
+      <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+      <rect class="box hl" x="20" y="40" width="190" height="78" rx="10"/>
+      <text x="115" y="70" text-anchor="middle">1 · Score</text>
+      <text class="sub" x="115" y="90" text-anchor="middle">regime → 8 families → blend</text>
+      <text class="sub" x="115" y="106" text-anchor="middle">quant · research · drivers</text>
+      <rect class="box" x="265" y="40" width="190" height="78" rx="10"/>
+      <text x="360" y="70" text-anchor="middle">2 · Commit</text>
+      <text class="sub" x="360" y="90" text-anchor="middle">P(up in 21 sessions), 1σ range</text>
+      <text class="sub" x="360" y="106" text-anchor="middle">features · model version</text>
+      <rect class="box" x="510" y="40" width="190" height="78" rx="10"/>
+      <text x="605" y="70" text-anchor="middle">3 · Ledger</text>
+      <text class="sub" x="605" y="90" text-anchor="middle">append-only · one per symbol/day</text>
+      <text class="sub" x="605" y="106" text-anchor="middle">written before the outcome exists</text>
+      <rect class="box" x="750" y="40" width="190" height="78" rx="10"/>
+      <text x="845" y="70" text-anchor="middle">4 · Resolve</text>
+      <text class="sub" x="845" y="90" text-anchor="middle">21 sessions later, write-once</text>
+      <text class="sub" x="845" y="106" text-anchor="middle">outcome · inside range?</text>
+      <rect class="box" x="750" y="210" width="190" height="78" rx="10"/>
+      <text x="845" y="240" text-anchor="middle">5 · Grade</text>
+      <text class="sub" x="845" y="260" text-anchor="middle">Brier skill · reliability curve</text>
+      <text class="sub" x="845" y="276" text-anchor="middle">t-test over independent blocks</text>
+      <rect class="box" x="400" y="210" width="250" height="78" rx="10"/>
+      <text x="525" y="240" text-anchor="middle">6 · Test every claim</text>
+      <text class="sub" x="525" y="260" text-anchor="middle">Evidence lab: walk-forward, permutation,</text>
+      <text class="sub" x="525" y="276" text-anchor="middle">deflated Sharpe · harness: regime A/B</text>
+      <rect class="box" x="20" y="210" width="290" height="78" rx="10"/>
+      <text x="165" y="240" text-anchor="middle">7 · Earn the weights</text>
+      <text class="sub" x="165" y="260" text-anchor="middle">picked defaults stay labelled "picked"</text>
+      <text class="sub" x="165" y="276" text-anchor="middle">until the record says otherwise (ADR 0006)</text>
+      <path class="edge" d="M210,79 L265,79"/>
+      <path class="edge" d="M455,79 L510,79"/>
+      <path class="edge" d="M700,79 L750,79"/>
+      <path class="edge" d="M845,118 L845,210"/>
+      <path class="edge" d="M750,249 L650,249"/>
+      <path class="edge" d="M400,249 L310,249"/>
+      <path class="edge" d="M115,210 L115,118"/>
+      <text class="sub" x="480" y="325" text-anchor="middle">Data aggregators stop at step 1. Steps 2–7 are what make a number on this site checkable.</text>
+    </svg>
   </section>
 
   <section class="card">
@@ -66,8 +114,8 @@
       <text class="sub" x="545" y="245" text-anchor="middle">one report feeds the page, the agent and the evaluator</text>
 
       <rect class="box" x="365" y="280" width="170" height="60" rx="8"/>
-      <text x="450" y="304" text-anchor="middle">Analytics core</text>
-      <text class="sub" x="450" y="322" text-anchor="middle">signals · blend · risk</text>
+      <text x="450" y="304" text-anchor="middle">Analytics engines</text>
+      <text class="sub" x="450" y="322" text-anchor="middle">signals · quant · research</text>
 
       <rect class="box" x="555" y="280" width="170" height="60" rx="8"/>
       <text x="640" y="304" text-anchor="middle">Data facade</text>
@@ -75,7 +123,7 @@
 
       <rect class="box" x="365" y="385" width="360" height="56" rx="8"/>
       <text x="545" y="408" text-anchor="middle">Persistence (SQLAlchemy Core)</text>
-      <text class="sub" x="545" y="426" text-anchor="middle">analysis_snapshots · agent_runs (append-only audit)</text>
+      <text class="sub" x="545" y="426" text-anchor="middle">snapshots · forecast ledger · agent_runs (append-only)</text>
 
       <rect class="box" x="785" y="80" width="150" height="54" rx="8"/>
       <text x="860" y="103" text-anchor="middle">Anthropic API</text>
@@ -109,25 +157,57 @@
     </svg>
   </section>
 
+  <section class="card">
+    <h2>The engines</h2>
+    <p class="small muted">Every engine is pure Python over plain dataclasses and lists: no I/O, no framework, no NumPy (ADR 0005). That is what lets one report serve three consumers, and lets every estimator be tested against a seeded null.</p>
+    <div class="table-scroll"><table class="data">
+      <thead><tr><th>Package</th><th class="num">Lines</th><th>What it does</th><th>Key methods</th></tr></thead>
+      <tbody>
+        <tr><td><code>analytics/</code></td><td class="num">918</td><td>Indicators, 8 evidence families, the explainable blend, risk statistics, the report builder</td><td>Wilder RSI, 12-1 momentum, historical VaR/ES, R/S Hurst, Lo–MacKinlay VR</td></tr>
+        <tr><td><code>quant/</code></td><td class="num">3,600</td><td>Volatility models, regime, inference, market structure, factor attribution, scenario simulation, covariance and portfolio construction</td><td>GARCH(1,1) MLE, Parkinson/Garman–Klass, PSR/DSR, Newey–West OLS, filtered historical simulation, Ledoit–Wolf, Marchenko–Pastur, Jacobi eigensolver, FISTA, ERC, HRP</td></tr>
+        <tr><td><code>research/</code></td><td class="num">1,075</td><td>Forensic accounting and valuation from SEC filings</td><td>Piotroski F, Altman Z/Z'', Beneish M (8/5-var), Sloan accruals, graded red flags, DCF grid, reverse DCF by bisection</td></tr>
+        <tr><td><code>forecast/</code></td><td class="num">756</td><td>The falsifiable forecast, the ledger, resolution and grading, the simulated walk-forward record</td><td>Brier skill vs climatology, reliability bins with Wilson intervals, block t-test, range coverage</td></tr>
+        <tr><td><code>evidence/</code></td><td class="num">596</td><td>Does each signal work on this stock? Point-in-time walk-forward tests</td><td>Rank IC on non-overlapping days, permutation + circular-shift tests, Bonferroni, rule economics after costs, deflated Sharpe</td></tr>
+        <tr><td><code>agent/</code></td><td class="num">610</td><td>Claude analyst over 10 read-only tools, grounding check, rules fallback</td><td>Hand-written tool loop, strict schemas, cited-figure verification</td></tr>
+        <tr><td><code>data/</code></td><td class="num">1,132</td><td>Provider protocols, TTL cache, Alpaca, SEC EDGAR XBRL + SIC, sector map, factor-model demo data</td><td>Market + sector + GARCH idiosyncratic generator</td></tr>
+        <tr><td>service</td><td class="num">1,041</td><td>App factory and routes, security middleware, database, settings, evaluation CLI</td><td>Token bucket, CSP, SQLAlchemy Core, append-only tables</td></tr>
+        <tr><td><code>web/static/</code></td><td class="num">1,384</td><td>Eleven tabs and six pages as vanilla ES modules; every chart is hand-built SVG</td><td>No CDN, no framework, no build step, <code>script-src 'self'</code></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
   <div class="grid">
     <section class="card span-6 prose">
-      <h2>Request path</h2>
-      <p>The edge terminates TLS and applies the first rate limit. The app enforces its own limit, security headers and optional bearer-key auth regardless, so a misconfigured proxy does not leave it open. Tickers are validated against <code>^[A-Z]{1,5}([.-][A-Z]{1,2})?$</code> before they reach any upstream URL.</p>
-      <p>One report per symbol is built from the data facade and handed to the page, the agent and the evaluation harness alike — they can never disagree about a number.</p>
+      <h2>Lifecycle of one stock page (~250 ms)</h2>
+      <ol class="small">
+        <li>Ticker validated against <code>^[A-Z]{1,5}([.-][A-Z]{1,2})?$</code> before it can reach any upstream URL.</li>
+        <li>Three years of bars for the stock, the benchmark and its sector fund, plus news and filings — each through a TTL cache.</li>
+        <li><strong>Regime first</strong>: corrected Hurst and variance ratio must agree, and the result tilts the family weights.</li>
+        <li>Eight families score or abstain; the blend shows every contribution.</li>
+        <li>Risk, GARCH, probabilistic Sharpe, volume profile and analogs; factor attribution and a 2,000-path filtered historical simulation; forensic scores and the DCF grid.</li>
+        <li>The forecast is built from the same bars and committed to the ledger — once per session — and any due forecasts for the symbol are resolved.</li>
+        <li>One JSON report goes to the page; the agent later reads the same object through its tools.</li>
+      </ol>
+      <p class="small muted">The evidence lab re-scores ~500 past sessions (~0.5 s), so it is a separate, cached endpoint loaded when its tab opens.</p>
+    </section>
+    <section class="card span-6 prose">
+      <h2>How the estimators are tested</h2>
+      <p>Each one is tested twice: on a <strong>seeded null</strong>, where it must find nothing, and on a <strong>planted signal</strong>, where it must find it. 248 tests, about 20 seconds, no network.</p>
+      <ul class="small">
+        <li>Analog search: 5% false positives on random walks (was 9% with the naive standard error — fixed).</li>
+        <li>Regime detector: 100 of 100 random walks called "random".</li>
+        <li>Evidence lab: 0 false "works" across 20 demo symbols and 40 random walks after adding a circular-shift test; the plain permutation test alone gave 7–9%.</li>
+        <li>Track record: a 5-symbol random basket earned "skill" on the plain interval; the block t-test now refuses it.</li>
+        <li>Point-in-time: mutating future bars must leave every past forecast and score unchanged.</li>
+      </ul>
     </section>
     <section class="card span-6 prose">
       <h2>Agent loop</h2>
-      <p>The agent gets six read-only tools bound server-side to one symbol, plus <code>submit_report</code>. No tool takes a ticker, URL or query. The loop has a step ceiling, handles every stop reason, re-validates the submission with Pydantic and checks each cited figure against what the tools actually returned.</p>
-      <p>Runs are cached per symbol, capped per day from the database, rate-limited per client, and written to an append-only audit table with tokens, latency and the full tool trace.</p>
+      <p>Ten read-only tools bound server-side to one symbol, plus <code>submit_report</code>. No tool takes a ticker, URL or query. The loop has a step ceiling, handles every stop reason, re-validates the submission with Pydantic and checks each cited figure against what the tools actually returned. Runs are cached, budgeted per day, rate-limited, and written to an audit table.</p>
     </section>
     <section class="card span-6 prose">
-      <h2>Security layers</h2>
-      <p>Strict CSP with no inline script, HSTS, frame denial, nosniff. Secrets are <code>SecretStr</code> and never logged. Constant-time key comparison. Non-root, read-only container with all capabilities dropped. Network policy allows ingress only from the ingress controller and egress only to DNS, the database and three HTTPS hosts.</p>
-    </section>
-    <section class="card span-6 prose">
-      <h2>Deploy anywhere</h2>
-      <p>Templates ship for Docker Compose (app, PostgreSQL, Caddy with automatic TLS), a hardened systemd unit with nginx and ufw on a plain VM, Kubernetes with NetworkPolicy, HPA and PDB, Google Cloud Run, AWS App Runner/ECS, and Azure Container Apps.</p>
-      <p>Full detail in the repository's <code>docs/</code>.</p>
+      <h2>Security and deployment</h2>
+      <p>Strict CSP with no inline script, HSTS, constant-time key comparison, secrets as <code>SecretStr</code>. Non-root read-only container; egress restricted to the model API, market data and SEC. Templates for Compose with Caddy, systemd + nginx + ufw, Kubernetes with NetworkPolicy, Cloud Run, AWS App Runner/ECS and Azure Container Apps.</p>
     </section>
   </div>
 </main>

@@ -1,0 +1,11 @@
+StockLens
+Copyright 2026 anand4286 (https://github.com/anand4286)
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It is educational software. Nothing it produces is investment advice, and it
+contains no brokerage integration or order path.
+
+Market data, filings and model outputs are fetched at run time from the
+providers a deployer configures (Alpaca, SEC EDGAR, Anthropic) under those
+providers' own terms; none of that data is distributed with this source.

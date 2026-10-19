@@ -112,3 +112,50 @@ def test_news_links_are_restricted_to_http():
     assert _safe_url("javascript:alert(1)") is None
     assert _safe_url("data:text/html,x") is None
     assert _safe_url("https://example.com/a") == "https://example.com/a"
+
+
+def test_compute_heavy_endpoints_have_their_own_rate_limit():
+    from fastapi.testclient import TestClient
+
+    from stocklens.app import create_app
+    from tests.conftest import make_settings
+
+    with TestClient(create_app(make_settings(compute_rate_limit_per_minute=2))) as c:
+        codes = [c.get("/api/v1/portfolio?symbols=AAPL,MSFT").status_code for _ in range(4)]
+    assert codes[:2] == [200, 200]
+    assert 429 in codes[2:]
+
+
+def test_ledger_writes_stop_at_the_daily_ceiling():
+    from fastapi.testclient import TestClient
+
+    from stocklens.app import create_app
+    from tests.conftest import make_settings
+
+    with TestClient(create_app(make_settings(ledger_daily_limit=2))) as c:
+        for sym in ("AAPL", "MSFT", "NVDA", "KO"):
+            assert c.get(f"/api/v1/symbols/{sym}/report").status_code == 200
+        assert c.get("/api/v1/track-record").json()["live"]["count"] == 2
+
+
+def test_cors_rejects_wildcards_and_paths():
+    import pytest
+    from pydantic import ValidationError
+
+    from tests.conftest import make_settings
+
+    for bad in (["*"], ["example.com"], ["https://example.com/path"]):
+        with pytest.raises(ValidationError):
+            make_settings(cors_origins=bad)
+    assert make_settings(cors_origins=["https://anand4286.github.io/"]).cors_origins == [
+        "https://anand4286.github.io"]
+
+
+def test_http_clients_do_not_log_upstream_urls():
+    import logging
+
+    from stocklens.logging_setup import configure
+
+    configure("INFO", as_json=True)
+    for name in ("httpx", "httpcore", "anthropic"):
+        assert not logging.getLogger(name).isEnabledFor(logging.INFO)

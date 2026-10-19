@@ -1,0 +1,9 @@
+# Every change is reviewed by the maintainer; security-sensitive paths are listed
+# explicitly so the rule survives if broader ownership is added later.
+*                         @anand4286
+/src/stocklens/security.py @anand4286
+/src/stocklens/config.py   @anand4286
+/src/stocklens/agent/      @anand4286
+/deploy/                   @anand4286
+/.github/                  @anand4286
+/Dockerfile                @anand4286

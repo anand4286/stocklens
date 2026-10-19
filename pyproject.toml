@@ -4,6 +4,8 @@ version = "1.0.0"
 description = "Open-source, explainable stock analytics with a guarded AI analyst agent"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "anand4286", email = "anand4286@users.noreply.github.com" }]
 requires-python = ">=3.12"
 keywords = ["stocks", "analytics", "fastapi", "ai-agent", "claude", "quant"]
 classifiers = [
@@ -24,6 +26,13 @@ dependencies = [
   # brief) when no API key is configured.
   "anthropic>=1.0,<2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/anand4286/stocklens"
+Documentation = "https://anand4286.github.io/stocklens/"
+Source = "https://github.com/anand4286/stocklens"
+Issues = "https://github.com/anand4286/stocklens/issues"
+Security = "https://github.com/anand4286/stocklens/security/policy"
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2,<4"]
@@ -51,7 +60,8 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S", "SIM"]
 # S101: asserts are how pytest works.
-per-file-ignores = { "tests/*" = ["S101", "S105", "S106"] }
+# scripts/build_docs_site.py: its long lines are the console's copy tables.
+per-file-ignores = { "tests/*" = ["S101", "S105", "S106"], "scripts/build_docs_site.py" = ["E501", "S603"] }
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]

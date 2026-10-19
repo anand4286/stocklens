@@ -71,6 +71,38 @@ class Fundamentals:
     shares_outstanding: float | None = None
     source: str = "unknown"
     extra: dict[str, float] = field(default_factory=dict)
+    # -- added for the research layer (forensics, valuation). Each defaults to
+    # None so older adapters and hand-built test fixtures keep working: a field
+    # nobody filled is unknown, never zero.
+    interest_expense: float | None = None
+    income_tax: float | None = None
+    pretax_income: float | None = None
+    depreciation: float | None = None
+    stock_compensation: float | None = None
+    research_development: float | None = None
+    sga: float | None = None
+    receivables: float | None = None
+    inventory: float | None = None
+    ppe_net: float | None = None
+    retained_earnings: float | None = None
+    #: Cash paid out, reported as positive amounts like capex.
+    dividends_paid: float | None = None
+    buybacks: float | None = None
+    #: Weighted-average diluted shares for the fiscal year — the share count the
+    #: per-share figures in the filing were divided by, unlike the point-in-time
+    #: cover-page `shares_outstanding`.
+    shares_diluted: float | None = None
+    #: The prior fiscal year's value for any of the fields above, keyed by field
+    #: name. Piotroski and Beneish are year-on-year comparisons and cannot run on
+    #: a single year; a key that is absent or None means "not reported".
+    prior: dict[str, float | None] = field(default_factory=dict)
+    #: Up to five annual (period end ISO date, value) points, oldest first, for
+    #: revenue, net_income, operating_cash_flow, capex and shares_diluted.
+    history: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
+    #: Four-digit Standard Industrial Classification code from the filer's SEC
+    #: profile. It decides which sector fund the factor attribution uses; None
+    #: when the source does not carry it (it is not in XBRL company facts).
+    sic: int | None = None
 
 
 class PriceSource(Protocol):
