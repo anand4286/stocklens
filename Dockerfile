@@ -10,7 +10,11 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY src ./src
-RUN pip install ".[postgres]"
+RUN pip install ".[postgres]" \
+ # The runtime never installs anything, so pip (and the copies of urllib3,
+ # msgpack and setuptools it vendors) is attack surface with no use. Remove it
+ # from the virtualenv that is copied into the runtime image.
+ && (python -m pip uninstall --yes pip setuptools wheel || true)
 
 FROM python:3.14-slim AS runtime
 LABEL org.opencontainers.image.title="stocklens" \
@@ -20,7 +24,10 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     STOCKLENS_DATABASE_URL=sqlite:////app/var/stocklens.db
-RUN groupadd --system --gid 10001 stocklens \
+# Same for the base image's own pip and ensurepip wheels.
+RUN (python -m pip uninstall --yes pip setuptools wheel || true) \
+ && rm -rf /usr/local/lib/python3*/ensurepip /usr/local/bin/pip* \
+ && groupadd --system --gid 10001 stocklens \
  && useradd --system --uid 10001 --gid stocklens --home-dir /app --shell /usr/sbin/nologin stocklens \
  && mkdir -p /app/var && chown stocklens:stocklens /app/var
 COPY --from=builder /opt/venv /opt/venv
