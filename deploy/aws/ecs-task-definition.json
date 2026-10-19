@@ -1,0 +1,40 @@
+{
+  "family": "stocklens",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": { "cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX" },
+  "executionRoleArn": "arn:aws:iam::ACCOUNT:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT:role/stocklens-task",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "ACCOUNT.dkr.ecr.REGION.amazonaws.com/stocklens:1.0.0",
+      "essential": true,
+      "user": "10001:10001",
+      "readonlyRootFilesystem": true,
+      "linuxParameters": { "capabilities": { "drop": ["ALL"] }, "initProcessEnabled": true },
+      "portMappings": [{ "containerPort": 8080, "protocol": "tcp" }],
+      "environment": [
+        { "name": "STOCKLENS_TRUST_PROXY_HEADERS", "value": "true" },
+        { "name": "FORWARDED_ALLOW_IPS", "value": "*" }
+      ],
+      "secrets": [
+        { "name": "STOCKLENS_DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:stocklens/database-url" },
+        { "name": "STOCKLENS_API_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:stocklens/api-key" },
+        { "name": "STOCKLENS_ANTHROPIC_API_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:stocklens/anthropic-key" }
+      ],
+      "mountPoints": [{ "sourceVolume": "var", "containerPath": "/app/var" }, { "sourceVolume": "tmp", "containerPath": "/tmp" }],
+      "healthCheck": {
+        "command": ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"],
+        "interval": 30, "timeout": 5, "retries": 3, "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": { "awslogs-group": "/ecs/stocklens", "awslogs-region": "REGION", "awslogs-stream-prefix": "app" }
+      }
+    }
+  ],
+  "volumes": [{ "name": "var" }, { "name": "tmp" }]
+}

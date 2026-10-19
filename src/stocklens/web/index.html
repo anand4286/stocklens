@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StockLens · explainable stock analytics</title>
+<meta name="description" content="Open-source, explainable stock analytics with a guarded AI analyst agent.">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/index.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/static/logo.svg" alt="">StockLens</a>
+    <form class="search" role="search" action="/" autocomplete="off">
+      <input id="q" name="q" placeholder="Ticker, e.g. MSFT" maxlength="8" spellcheck="false" aria-label="Ticker symbol">
+    </form>
+    <nav class="nav">
+      <a href="/architecture">Architecture</a>
+      <a href="/docs">API</a>
+    </nav>
+  </div>
+</header>
+<div id="demo-banner" class="banner" hidden><div class="wrap">Demo mode: prices, news and fundamentals are synthetic and generated per ticker. Connect your own data keys to see real markets.</div></div>
+<main class="wrap">
+  <section class="hero">
+    <h1>Stock analytics that show their working.</h1>
+    <p>Eight independent families of evidence, one transparent blend, honest risk statistics, and an AI analyst agent whose every cited number is verified against its tools.</p>
+    <div class="chips">
+      <a href="/s/AAPL">AAPL</a><a href="/s/MSFT">MSFT</a><a href="/s/NVDA">NVDA</a><a href="/s/JPM">JPM</a><a href="/s/XOM">XOM</a><a href="/s/KO">KO</a>
+    </div>
+  </section>
+  <section class="features">
+    <div class="card"><h3>Explainable score</h3><p>Every family scores −1 to +1 or abstains. Missing evidence lowers confidence instead of posing as neutral, and contributions sum to the score.</p></div>
+    <div class="card"><h3>Guarded AI agent</h3><p>Claude works through read-only tools bound to one symbol, submits a schema-validated note, and each cited figure is checked against what the tools returned.</p></div>
+    <div class="card"><h3>Real risk statistics</h3><p>EWMA volatility, historical VaR and expected shortfall, drawdown, beta, Hurst and variance ratio — with sample floors, not numbers from three data points.</p></div>
+    <div class="card"><h3>Secure by default</h3><p>Strict CSP with no inline script, rate limits, constant-time key checks, non-root read-only container, and deploy templates with a firewall for every target.</p></div>
+  </section>
+</main>
+<footer><div class="wrap">StockLens is open-source educational software. Nothing here is investment advice. Apache-2.0.</div></footer>
+</body>
+</html>

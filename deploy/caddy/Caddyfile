@@ -1,0 +1,19 @@
+# Caddy obtains and renews TLS certificates automatically.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Edge rate limit is in nginx/WAF templates; Caddy core has none, so the
+	# app's own token bucket is the limit in this stack.
+	reverse_proxy app:8080 {
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+	}
+
+	request_body {
+		max_size 64KB
+	}
+}

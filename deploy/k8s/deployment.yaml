@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stocklens
+  namespace: stocklens
+automountServiceAccountToken: false   # the app never talks to the Kubernetes API
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocklens
+  namespace: stocklens
+  labels: { app: stocklens }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: stocklens }
+  template:
+    metadata:
+      labels: { app: stocklens }
+    spec:
+      serviceAccountName: stocklens
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app: stocklens } }
+      containers:
+        - name: app
+          image: registry.example.com/stocklens:1.0.0   # your registry; pin by digest in production
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: stocklens-config }
+            - secretRef: { name: stocklens-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 100m, memory: 192Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: var, mountPath: /app/var }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+        - { name: var, emptyDir: { sizeLimit: 128Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stocklens
+  namespace: stocklens
+spec:
+  selector: { app: stocklens }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stocklens
+  namespace: stocklens
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: stocklens }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: stocklens
+  namespace: stocklens
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: stocklens }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }

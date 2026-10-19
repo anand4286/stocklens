@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stocklens
+  labels:
+    # Pod Security Admission: reject anything privileged, root, or with extra capabilities.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted

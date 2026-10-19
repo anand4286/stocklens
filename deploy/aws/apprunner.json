@@ -1,0 +1,27 @@
+{
+  "ServiceName": "stocklens",
+  "SourceConfiguration": {
+    "ImageRepository": {
+      "ImageIdentifier": "ACCOUNT.dkr.ecr.REGION.amazonaws.com/stocklens:1.0.0",
+      "ImageRepositoryType": "ECR",
+      "ImageConfiguration": {
+        "Port": "8080",
+        "RuntimeEnvironmentVariables": {
+          "STOCKLENS_DATA_PROVIDER": "demo",
+          "STOCKLENS_TRUST_PROXY_HEADERS": "true",
+          "FORWARDED_ALLOW_IPS": "*",
+          "STOCKLENS_DATABASE_URL": "sqlite:////tmp/stocklens.db"
+        },
+        "RuntimeEnvironmentSecrets": {
+          "STOCKLENS_API_KEY": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:stocklens/api-key",
+          "STOCKLENS_ANTHROPIC_API_KEY": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:stocklens/anthropic-key"
+        }
+      }
+    },
+    "AutoDeploymentsEnabled": false,
+    "AuthenticationConfiguration": { "AccessRoleArn": "arn:aws:iam::ACCOUNT:role/AppRunnerECRAccess" }
+  },
+  "InstanceConfiguration": { "Cpu": "1 vCPU", "Memory": "2 GB",
+    "InstanceRoleArn": "arn:aws:iam::ACCOUNT:role/StockLensSecretsRead" },
+  "HealthCheckConfiguration": { "Protocol": "HTTP", "Path": "/healthz", "Interval": 10 }
+}

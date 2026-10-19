@@ -1,0 +1,49 @@
+# Hardened systemd unit for a bare VM. `systemd-analyze security stocklens`
+# should score it "OK" or better.
+[Unit]
+Description=StockLens stock analytics
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=stocklens
+Group=stocklens
+WorkingDirectory=/opt/stocklens
+EnvironmentFile=/etc/stocklens/stocklens.env
+ExecStart=/opt/stocklens/.venv/bin/uvicorn --factory stocklens.app:app_factory \
+    --host 127.0.0.1 --port 8080 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-server-header
+Restart=on-failure
+RestartSec=5
+
+# Sandboxing
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+ReadWritePaths=/opt/stocklens/var
+StateDirectory=stocklens
+MemoryMax=768M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

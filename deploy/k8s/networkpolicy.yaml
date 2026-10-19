@@ -1,0 +1,46 @@
+# Default deny, then allow exactly what the app needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: stocklens
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: stocklens-app
+  namespace: stocklens
+spec:
+  podSelector:
+    matchLabels: { app: stocklens }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Only the ingress controller may reach the pods.
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+      ports: [{ port: 8080, protocol: TCP }]
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+    # PostgreSQL inside the namespace
+    - to:
+        - podSelector:
+            matchLabels: { app: postgres }
+      ports: [{ port: 5432, protocol: TCP }]
+    # HTTPS to the internet, excluding private ranges and cloud metadata.
+    # NetworkPolicy cannot match hostnames; for a strict FQDN allowlist
+    # (data.alpaca.markets, data.sec.gov, www.sec.gov, api.anthropic.com)
+    # use an egress gateway or Cilium FQDN policy (see docs/SECURITY_ARCHITECTURE.md).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports: [{ port: 443, protocol: TCP }]

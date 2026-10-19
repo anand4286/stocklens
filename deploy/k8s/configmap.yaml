@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stocklens-config
+  namespace: stocklens
+data:
+  STOCKLENS_DATA_PROVIDER: "demo"
+  STOCKLENS_TRUST_PROXY_HEADERS: "true"
+  STOCKLENS_RATE_LIMIT_PER_MINUTE: "60"
+  STOCKLENS_AGENT_PUBLIC: "false"
+  STOCKLENS_AGENT_DAILY_LIMIT: "50"
+  STOCKLENS_LOG_JSON: "true"
+  FORWARDED_ALLOW_IPS: "*"

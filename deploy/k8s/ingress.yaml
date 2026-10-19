@@ -1,0 +1,27 @@
+# ingress-nginx + cert-manager. Edge rate limits complement the app's own.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stocklens
+  namespace: stocklens
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rpm: "120"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [stocklens.example.com]
+      secretName: stocklens-tls
+  rules:
+    - host: stocklens.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: stocklens, port: { name: http } }

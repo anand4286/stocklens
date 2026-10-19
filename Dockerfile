@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.7
+# Multi-stage build: compilers and pip stay in the builder; the runtime image
+# holds the virtualenv and the app, runs as an unprivileged user, and works
+# with a read-only root filesystem (writes go to /app/var, a mounted volume).
+
+FROM python:3.13-slim AS builder
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /build
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+COPY pyproject.toml README.md LICENSE ./
+COPY src ./src
+RUN pip install ".[postgres]"
+
+FROM python:3.13-slim AS runtime
+LABEL org.opencontainers.image.title="stocklens" \
+      org.opencontainers.image.description="Explainable stock analytics with a guarded AI analyst agent" \
+      org.opencontainers.image.licenses="Apache-2.0"
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    STOCKLENS_DATABASE_URL=sqlite:////app/var/stocklens.db
+RUN groupadd --system --gid 10001 stocklens \
+ && useradd --system --uid 10001 --gid stocklens --home-dir /app --shell /usr/sbin/nologin stocklens \
+ && mkdir -p /app/var && chown stocklens:stocklens /app/var
+COPY --from=builder /opt/venv /opt/venv
+WORKDIR /app
+USER 10001:10001
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).status == 200 else 1)"]
+# --proxy-headers is safe only because the container is never exposed directly;
+# every deploy template puts a proxy or managed load balancer in front.
+CMD ["sh", "-c", "exec uvicorn --factory stocklens.app:app_factory --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1} --no-server-header"]

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime state and secrets — never committed
+var/
+*.db
+*.sqlite
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+deploy/k8s/secret.yaml
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

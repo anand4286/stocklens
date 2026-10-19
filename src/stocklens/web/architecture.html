@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture · StockLens</title>
+<meta name="description" content="Open-source, explainable stock analytics with a guarded AI analyst agent.">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/index.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/static/logo.svg" alt="">StockLens</a>
+    <form class="search" role="search" action="/" autocomplete="off">
+      <input id="q" name="q" placeholder="Ticker, e.g. MSFT" maxlength="8" spellcheck="false" aria-label="Ticker symbol">
+    </form>
+    <nav class="nav">
+      <a href="/architecture">Architecture</a>
+      <a href="/docs">API</a>
+    </nav>
+  </div>
+</header>
+<div id="demo-banner" class="banner" hidden><div class="wrap">Demo mode: prices, news and fundamentals are synthetic and generated per ticker. Connect your own data keys to see real markets.</div></div>
+<main class="wrap">
+  <section class="hero">
+    <h1>How StockLens is built</h1>
+    <p>A single FastAPI service, a pure analytics core, a bounded AI agent, and a persistence layer — behind an edge that terminates TLS and rate-limits, with egress restricted to three named hosts.</p>
+  </section>
+
+  <section class="card">
+    <h2>System architecture</h2>
+    <svg class="diagram" viewBox="0 0 960 500" role="img" aria-labelledby="arch-title">
+      <title id="arch-title">Browser to edge proxy to the StockLens container, which reaches market data, SEC EDGAR, the Anthropic API and PostgreSQL</title>
+      <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+
+      <rect class="zone" x="345" y="30" width="400" height="450" rx="12"/>
+      <text class="sub" x="360" y="52">Container · non-root · read-only FS · no shell</text>
+      <rect class="zone" x="770" y="30" width="180" height="450" rx="12"/>
+      <text class="sub" x="782" y="52">Egress allowlist</text>
+
+      <rect class="box" x="20" y="220" width="120" height="60" rx="8"/>
+      <text x="80" y="246" text-anchor="middle">Browser</text>
+      <text class="sub" x="80" y="264" text-anchor="middle">strict CSP</text>
+
+      <rect class="box" x="170" y="200" width="150" height="100" rx="8"/>
+      <text x="245" y="232" text-anchor="middle">Edge</text>
+      <text class="sub" x="245" y="252" text-anchor="middle">TLS 1.2+ · WAF</text>
+      <text class="sub" x="245" y="270" text-anchor="middle">rate limit · firewall</text>
+
+      <rect class="box" x="365" y="70" width="360" height="44" rx="8"/>
+      <text x="545" y="88" text-anchor="middle">Security middleware</text>
+      <text class="sub" x="545" y="105" text-anchor="middle">headers · token bucket · API key · request ID · JSON logs</text>
+
+      <rect class="box" x="365" y="135" width="170" height="50" rx="8"/>
+      <text x="450" y="157" text-anchor="middle">API routes</text>
+      <text class="sub" x="450" y="174" text-anchor="middle">/api/v1 · validation</text>
+
+      <rect class="box hl" x="555" y="135" width="170" height="50" rx="8"/>
+      <text x="640" y="157" text-anchor="middle">Analyst agent</text>
+      <text class="sub" x="640" y="174" text-anchor="middle">bounded tool loop</text>
+
+      <rect class="box" x="365" y="210" width="360" height="44" rx="8"/>
+      <text x="545" y="228" text-anchor="middle">Report builder</text>
+      <text class="sub" x="545" y="245" text-anchor="middle">one report feeds the page, the agent and the evaluator</text>
+
+      <rect class="box" x="365" y="280" width="170" height="60" rx="8"/>
+      <text x="450" y="304" text-anchor="middle">Analytics core</text>
+      <text class="sub" x="450" y="322" text-anchor="middle">signals · blend · risk</text>
+
+      <rect class="box" x="555" y="280" width="170" height="60" rx="8"/>
+      <text x="640" y="304" text-anchor="middle">Data facade</text>
+      <text class="sub" x="640" y="322" text-anchor="middle">providers · TTL cache</text>
+
+      <rect class="box" x="365" y="385" width="360" height="56" rx="8"/>
+      <text x="545" y="408" text-anchor="middle">Persistence (SQLAlchemy Core)</text>
+      <text class="sub" x="545" y="426" text-anchor="middle">analysis_snapshots · agent_runs (append-only audit)</text>
+
+      <rect class="box" x="785" y="80" width="150" height="54" rx="8"/>
+      <text x="860" y="103" text-anchor="middle">Anthropic API</text>
+      <text class="sub" x="860" y="121" text-anchor="middle">Claude, tool use</text>
+
+      <rect class="box" x="785" y="160" width="150" height="54" rx="8"/>
+      <text x="860" y="183" text-anchor="middle">Market data</text>
+      <text class="sub" x="860" y="201" text-anchor="middle">bars · news (read-only)</text>
+
+      <rect class="box" x="785" y="240" width="150" height="54" rx="8"/>
+      <text x="860" y="263" text-anchor="middle">SEC EDGAR</text>
+      <text class="sub" x="860" y="281" text-anchor="middle">XBRL filings</text>
+
+      <rect class="box" x="785" y="385" width="150" height="56" rx="8"/>
+      <text x="860" y="408" text-anchor="middle">PostgreSQL</text>
+      <text class="sub" x="860" y="426" text-anchor="middle">private network</text>
+
+      <path class="edge" d="M140,250 L170,250"/>
+      <path class="edge" d="M320,230 L340,230 L340,92 L365,92"/>
+      <path class="edge" d="M450,114 L450,135"/>
+      <path class="edge" d="M535,160 L555,160"/>
+      <path class="edge" d="M450,185 L450,210"/>
+      <path class="edge" d="M640,185 L640,210"/>
+      <path class="edge" d="M450,254 L450,280"/>
+      <path class="edge" d="M640,254 L640,280"/>
+      <path class="edge" d="M725,150 L750,150 L750,107 L785,107"/>
+      <path class="edge" d="M725,310 L765,310 L765,187 L785,187"/>
+      <path class="edge" d="M765,267 L785,267"/>
+      <path class="edge" d="M365,165 L355,165 L355,413 L365,413"/>
+      <path class="edge" d="M725,413 L785,413"/>
+    </svg>
+  </section>
+
+  <div class="grid">
+    <section class="card span-6 prose">
+      <h2>Request path</h2>
+      <p>The edge terminates TLS and applies the first rate limit. The app enforces its own limit, security headers and optional bearer-key auth regardless, so a misconfigured proxy does not leave it open. Tickers are validated against <code>^[A-Z]{1,5}([.-][A-Z]{1,2})?$</code> before they reach any upstream URL.</p>
+      <p>One report per symbol is built from the data facade and handed to the page, the agent and the evaluation harness alike — they can never disagree about a number.</p>
+    </section>
+    <section class="card span-6 prose">
+      <h2>Agent loop</h2>
+      <p>The agent gets six read-only tools bound server-side to one symbol, plus <code>submit_report</code>. No tool takes a ticker, URL or query. The loop has a step ceiling, handles every stop reason, re-validates the submission with Pydantic and checks each cited figure against what the tools actually returned.</p>
+      <p>Runs are cached per symbol, capped per day from the database, rate-limited per client, and written to an append-only audit table with tokens, latency and the full tool trace.</p>
+    </section>
+    <section class="card span-6 prose">
+      <h2>Security layers</h2>
+      <p>Strict CSP with no inline script, HSTS, frame denial, nosniff. Secrets are <code>SecretStr</code> and never logged. Constant-time key comparison. Non-root, read-only container with all capabilities dropped. Network policy allows ingress only from the ingress controller and egress only to DNS, the database and three HTTPS hosts.</p>
+    </section>
+    <section class="card span-6 prose">
+      <h2>Deploy anywhere</h2>
+      <p>Templates ship for Docker Compose (app, PostgreSQL, Caddy with automatic TLS), a hardened systemd unit with nginx and ufw on a plain VM, Kubernetes with NetworkPolicy, HPA and PDB, Google Cloud Run, AWS App Runner/ECS, and Azure Container Apps.</p>
+      <p>Full detail in the repository's <code>docs/</code>.</p>
+    </section>
+  </div>
+</main>
+<footer><div class="wrap">StockLens is open-source educational software. Nothing here is investment advice. Apache-2.0.</div></footer>
+</body>
+</html>
