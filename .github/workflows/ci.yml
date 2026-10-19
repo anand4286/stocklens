@@ -70,20 +70,20 @@ jobs:
           # log, so a failure is diagnosable from the checks API.
           note() { echo "::error title=smoke test::$(echo "$1" | tr '\n' ' ' | cut -c1-900)"; }
           echo "docker $(docker version --format '{{.Server.Version}}')"
-          if ! cid=$(docker run -d --name s --read-only --tmpfs /tmp --tmpfs /app/var \
+          if ! cid=$(docker run -d --name stocklens-smoke --read-only --tmpfs /tmp --tmpfs /app/var \
                 --cap-drop ALL --security-opt no-new-privileges:true \
                 -p 127.0.0.1::8080 stocklens:ci 2>err.txt); then
             note "docker run failed: $(cat err.txt)"; exit 1
           fi
-          port=$(docker port s 8080/tcp | head -1 | sed 's/.*://')
+          port=$(docker port stocklens-smoke 8080/tcp | head -1 | sed 's/.*://')
           for i in $(seq 1 30); do curl -fsS "localhost:$port/healthz" >/dev/null && break; sleep 1; done
           if ! curl -fsS "localhost:$port/healthz" >/dev/null; then
-            note "app did not become healthy: $(docker logs s 2>&1 | tail -20)"; exit 1
+            note "app did not become healthy: $(docker logs stocklens-smoke 2>&1 | tail -20)"; exit 1
           fi
           curl -fsS "localhost:$port/api/v1/symbols/AAPL/report" >/dev/null || { note "report failed"; exit 1; }
           curl -fsSI "localhost:$port/" | grep -qi "content-security-policy: default-src 'self'" \
             || { note "CSP header missing"; exit 1; }
-          uid=$(docker exec s id -u)
+          uid=$(docker exec stocklens-smoke id -u)
           [ "$uid" = "10001" ] || { note "running as uid $uid, expected 10001"; exit 1; }
           echo "smoke test passed on port $port as uid $uid"
       - name: Scan image
