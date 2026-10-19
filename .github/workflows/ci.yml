@@ -70,7 +70,8 @@ jobs:
           # log, so a failure is diagnosable from the checks API.
           note() { echo "::error title=smoke test::$(echo "$1" | tr '\n' ' ' | cut -c1-900)"; }
           echo "docker $(docker version --format '{{.Server.Version}}')"
-          if ! cid=$(docker run -d --name stocklens-smoke --read-only --tmpfs /tmp --tmpfs /app/var \
+          if ! cid=$(docker run -d --name stocklens-smoke --read-only --tmpfs /tmp \
+                --tmpfs /app/var:rw,uid=10001,gid=10001,mode=0700 \
                 --cap-drop ALL --security-opt no-new-privileges:true \
                 -p 127.0.0.1::8080 stocklens:ci 2>err.txt); then
             note "docker run failed: $(cat err.txt)"; exit 1
