@@ -37,7 +37,7 @@ Security = "https://github.com/anand4286/stocklens/security/policy"
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2,<4"]
-dev = ["pytest>=9.0.3,<10", "ruff>=0.6,<1", "bandit>=1.7,<2", "pip-audit>=2.7,<3", "pre-commit>=3.7,<5"]
+dev = ["pytest>=9.0.3,<10", "hypothesis>=6.100,<7", "ruff>=0.6,<1", "bandit>=1.7,<2", "pip-audit>=2.7,<3", "pre-commit>=3.7,<5"]
 
 [project.scripts]
 stocklens-evaluate = "stocklens.evaluate:main"

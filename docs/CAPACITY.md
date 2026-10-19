@@ -156,7 +156,8 @@ Any replica can serve any request.
 ## Reproducing
 
 ```bash
-pip install -e ".[dev]"
+pip install --require-hashes -r requirements-dev.lock -r requirements-build.lock
+pip install --no-deps --no-build-isolation -e .
 scripts/benchmark.sh 1     # one worker
 scripts/benchmark.sh 8     # eight workers
 ```

@@ -150,7 +150,9 @@ the store and roll the deployment.
 
 ## Supply chain
 
-- Dependencies pinned by range in `pyproject.toml`; Dependabot for pip, Docker and Actions.
+- Dependencies declared by range in `pyproject.toml` and **locked with SHA-256 hashes** in `requirements.lock`, `requirements-dev.lock` and `requirements-build.lock` (universal: Linux and macOS, Python 3.12–3.14; regenerate with `scripts/lock.sh`). Docker, CI and the VM installer install with `--require-hashes` and build the project with `--no-build-isolation`, so no unverified package — not even a build backend — can enter.
+- Base images pinned by digest; pip, setuptools and ensurepip removed from the runtime image.
+- Dependabot for pip, Docker and Actions.
 - **Every GitHub Action is pinned to a full commit SHA**, not a tag. A tag can
   be moved to a different commit by whoever controls the action's repository;
   a SHA cannot. Dependabot proposes SHA updates with the tag in a comment.

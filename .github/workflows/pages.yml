@@ -18,7 +18,10 @@ jobs:
         with: { persist-credentials: false }
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12", cache: pip }
-      - run: pip install -e .
+      - name: Install (hash-locked)
+        run: |
+          pip install --require-hashes -r requirements.lock -r requirements-build.lock
+          pip install --no-deps --no-build-isolation -e .
       - name: Generate the console (demo data, no network, no keys)
         run: python scripts/build_docs_site.py
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

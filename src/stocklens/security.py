@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 from .config import Settings
+from .logging_setup import log_safe
 
 log = logging.getLogger("stocklens.access")
 
@@ -121,10 +122,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
         log.info("request", extra={
-            "request_id": request.state.request_id, "method": request.method,
-            "path": request.url.path, "status": response.status_code,
+            # The path is URL-decoded and attacker-chosen (`/%0A...` decodes to a
+            # newline), so every client-controlled field is made log-safe.
+            "request_id": request.state.request_id, "method": log_safe(request.method, 16),
+            "path": log_safe(request.url.path, 256), "status": response.status_code,
             "duration_ms": round((time.monotonic() - started) * 1000, 1),
-            "client_ip": request.state.client_ip,
+            "client_ip": log_safe(request.state.client_ip, 64),
         })
         return response
 

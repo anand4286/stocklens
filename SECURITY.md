@@ -42,7 +42,8 @@ The latest commit on `main` receives security fixes.
 | **AI agent** | Read-only tools bound server-side to one symbol; no tool accepts a ticker, URL or query; headlines delivered as labelled untrusted data; every cited figure verified |
 | **Runtime** | Multi-stage build; non-root UID 10001 with no login shell; read-only root filesystem; all Linux capabilities dropped; no-new-privileges |
 | **Network** | Default-deny Kubernetes NetworkPolicy; host firewall deny-in-and-out templates; egress only to DNS, the database and the named HTTPS providers |
-| **Supply chain** | Every GitHub Action pinned to a full commit SHA; Dependabot for pip, Docker and Actions; pip-audit and a CycloneDX SBOM in CI; Trivy image scan; CodeQL (security-extended); OpenSSF Scorecard |
+| **Supply chain** | Every Python package installed from **hash-locked** requirement files (`pip --require-hashes`) in Docker, CI and the VM installer; base images pinned by **digest**; every GitHub Action pinned to a full commit SHA; pip removed from the runtime image; Dependabot for pip, Docker and Actions; pip-audit and a CycloneDX SBOM in CI; Trivy image scan; CodeQL (security-extended); OpenSSF Scorecard |
+| **Input fuzzing** | Property-based tests (Hypothesis) generate thousands of hostile tickers, log fields and CORS origins per run and assert the boundary invariants hold — including through the live API |
 
 Threat model (STRIDE), trust boundaries and firewall design:
 [docs/SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md).

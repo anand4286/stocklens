@@ -175,3 +175,20 @@ def test_cdn_caching_is_opt_in_and_never_with_an_api_key():
     with TestClient(create_app(make_settings(public_cache_seconds=120, api_key="k" * 32))) as c:
         r = c.get("/api/v1/symbols/KO/report", headers={"Authorization": "Bearer " + "k" * 32})
         assert r.headers["cache-control"] == "no-store"
+
+
+def test_log_fields_cannot_forge_lines():
+    from stocklens.logging_setup import log_safe
+
+    assert log_safe("AAPL\r\nINFO forged entry") == "AAPLINFO forged entry"
+    assert log_safe("x\x1b[31m\x00") == "x[31m"
+    assert len(log_safe("A" * 500)) == 64
+
+
+def test_access_log_neutralises_newlines_in_the_path(client, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="stocklens.access"):
+        client.get("/static/x%0Aforged%20entry")
+    paths = [r.path for r in caplog.records if hasattr(r, "path")]
+    assert paths and all("\n" not in p for p in paths)

@@ -28,6 +28,17 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+def log_safe(value: object, limit: int = 64) -> str:
+    """A value fit for a log field: no line breaks or control characters, bounded.
+
+    Symbols are validated before they get here, and the JSON formatter escapes
+    control characters anyway — but plain-text logging does not, and a forged
+    log line is cheap to prevent at the point of use.
+    """
+    text = str(value).replace("\r", "").replace("\n", "")
+    return "".join(ch for ch in text if ch.isprintable())[:limit]
+
+
 def configure(level: str = "INFO", as_json: bool = True) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter() if as_json else logging.Formatter(

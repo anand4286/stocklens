@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from ..config import Settings
+from ..logging_setup import log_safe
 from .base import (
     Bar,
     DataUnavailable,
@@ -104,7 +105,8 @@ class MarketData:
             return self._cache.get_or_set(("news", symbol, limit),
                                           lambda: self.news_source.news(symbol, limit))
         except DataUnavailable as exc:
-            log.warning("news unavailable", extra={"symbol": symbol, "reason": str(exc)})
+            log.warning("news unavailable",
+                        extra={"symbol": log_safe(symbol), "reason": log_safe(exc, 200)})
             return []
 
     def fundamentals(self, symbol: str) -> Fundamentals | None:
@@ -115,7 +117,7 @@ class MarketData:
                 ("fundamentals", symbol), lambda: self.fundamentals_source.fundamentals(symbol))
         except DataUnavailable as exc:
             log.warning("fundamentals unavailable",
-                        extra={"symbol": symbol, "reason": str(exc)})
+                        extra={"symbol": log_safe(symbol), "reason": log_safe(exc, 200)})
             return None
 
 

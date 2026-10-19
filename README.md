@@ -11,7 +11,7 @@ outcome exists, grades itself in public, re-tests every signal on the stock in f
 verifies every figure its AI analyst cites.
 
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-3776ab?logo=python&logoColor=white)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-254%20passing-2ea44f)](tests)
+[![Tests](https://img.shields.io/badge/tests-262%20passing-2ea44f)](tests)
 [![Numerics](https://img.shields.io/badge/numerics-pure%20python%2C%20no%20NumPy-6d8cff)](docs/adr/0005-numerics-implemented-not-imported.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![API console](https://img.shields.io/badge/API%20console-live-8b5cf6)](https://anand4286.github.io/stocklens/)
@@ -517,7 +517,7 @@ erDiagram
 ## 10. How the estimators are tested
 
 Each estimator is tested twice: on a **seeded null**, where it must find nothing, and on a
-**planted signal**, where it must find it. 254 tests, about 20 seconds, no network.
+**planted signal**, where it must find it. 262 tests, about 20 seconds, no network.
 
 ```mermaid
 flowchart LR
@@ -556,7 +556,8 @@ flowchart LR
 | Non-root, read-only, capabilities dropped; default-deny NetworkPolicy; host firewall deny in and out | `Dockerfile`, `deploy/` |
 | Per-client compute limit on history-rescoring endpoints; daily cap on ledger writes; CORS exact-origin validation | `app.py`, `config.py`, tested |
 | Upstream URLs never logged; secrets never in `repr`, logs or error bodies | `logging_setup.py`, `config.py`, tested |
-| **Supply chain:** every GitHub Action pinned to a commit SHA, Dependabot, pip-audit, CycloneDX SBOM, Trivy, CodeQL security-extended, gitleaks on full history, OpenSSF Scorecard | `.github/` |
+| **Supply chain:** hash-locked installs everywhere (`--require-hashes`), digest-pinned base image, SHA-pinned Actions, pip removed from the runtime image, Dependabot, pip-audit, CycloneDX SBOM, Trivy, CodeQL security-extended, gitleaks on full history, OpenSSF Scorecard | `requirements*.lock`, `Dockerfile`, `.github/` |
+| Property-based fuzzing of every input boundary (tickers, log fields, CORS, cache, API) | `tests/test_fuzz_boundaries.py` |
 
 | Target | Template |
 |---|---|
@@ -620,7 +621,8 @@ URL so each symbol is computed by one pod. Full model, formulas and limits:
 ```bash
 git clone https://github.com/anand4286/stocklens.git && cd stocklens
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install --require-hashes -r requirements-dev.lock -r requirements-build.lock
+pip install --no-deps --no-build-isolation -e .
 uvicorn --factory stocklens.app:app_factory --port 8080
 ```
 
@@ -691,7 +693,7 @@ scripts/         build_docs_site.py (API console) · benchmark.sh + bench_cold.p
 site/            the generated API console (deployed to GitHub Pages)
 deploy/          caddy · nginx · systemd · vm · k8s · cloudrun · aws · azure
 docs/            architecture · methodology · quant · agent · security · deployment · API · ADRs
-tests/           254 tests: nulls and planted signals, point-in-time, security, agent, API
+tests/           262 tests: nulls and planted signals, point-in-time, security, agent, API
 ```
 
 | Document | What it covers |

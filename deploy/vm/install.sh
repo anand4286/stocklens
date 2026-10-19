@@ -12,8 +12,10 @@ dpkg-reconfigure -f noninteractive unattended-upgrades
 id stocklens >/dev/null 2>&1 || useradd --system --home /opt/stocklens --shell /usr/sbin/nologin stocklens
 git clone --depth 1 "$REPO" /opt/stocklens 2>/dev/null || git -C /opt/stocklens pull --ff-only
 python3 -m venv /opt/stocklens/.venv
-/opt/stocklens/.venv/bin/pip install --upgrade pip
-/opt/stocklens/.venv/bin/pip install /opt/stocklens
+# Hash-locked: pip refuses any package whose SHA-256 is not in the lockfile.
+/opt/stocklens/.venv/bin/pip install --require-hashes \
+  -r /opt/stocklens/requirements.lock -r /opt/stocklens/requirements-build.lock
+/opt/stocklens/.venv/bin/pip install --no-deps --no-build-isolation /opt/stocklens
 mkdir -p /opt/stocklens/var /etc/stocklens
 chown -R stocklens:stocklens /opt/stocklens/var
 

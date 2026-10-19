@@ -169,7 +169,8 @@
       <div class="box"><h4>Install and run</h4><pre class="curl">git clone https://github.com/anand4286/stocklens.git
 cd stocklens
 python3 -m venv .venv &amp;&amp; source .venv/bin/activate
-pip install -e ".[dev]"
+pip install --require-hashes -r requirements-dev.lock -r requirements-build.lock
+pip install --no-deps --no-build-isolation -e .
 uvicorn --factory stocklens.app:app_factory --port 8080</pre></div>
       <div class="box"><h4>Call the API</h4><pre class="curl">curl -s localhost:8080/api/v1/symbols/MSFT/report \
   | jq '{call: .forecast.p_up,

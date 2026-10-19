@@ -2,9 +2,18 @@
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]" && pre-commit install
+pip install --require-hashes -r requirements-dev.lock -r requirements-build.lock
+pip install --no-deps --no-build-isolation -e . && pre-commit install
 pytest && ruff check src tests && bandit -q -r src -c pyproject.toml
 ```
+
+**Changing dependencies:** edit the ranges in `pyproject.toml`, then run
+`scripts/lock.sh` (needs [uv](https://docs.astral.sh/uv/)) and commit the
+regenerated `requirements*.lock` files. Every install path verifies packages
+against those hashes, so a dependency change without a relock fails CI.
+
+**Workflow:** `main` is protected — branch, open a pull request, and merge once
+CI, CodeQL and the secret scan are green.
 
 Ground rules, all enforced by tests where possible:
 

@@ -24,7 +24,8 @@ an SQLite file and the rules-based analyst.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install --require-hashes -r requirements-dev.lock -r requirements-build.lock
+pip install --no-deps --no-build-isolation -e .
 uvicorn --factory stocklens.app:app_factory --reload --port 8080
 ```
 

@@ -42,7 +42,7 @@ from .evidence import test_families
 from .forecast import backfill
 from .forecast import scoring as forecast_scoring
 from .forecast.ledger import resolve_due
-from .logging_setup import configure
+from .logging_setup import configure, log_safe
 from .quant import portfolio as portfolio_lab
 from .security import RateLimiter, SecurityMiddleware, has_valid_key, require_api_key_if_configured
 
@@ -239,7 +239,7 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
                 commit_forecast(sym, data)
             else:
                 log.warning("ledger daily limit reached; nothing recorded",
-                            extra={"symbol": sym})
+                            extra={"symbol": log_safe(sym)})
             return True
 
         try:
@@ -247,7 +247,7 @@ def create_app(settings: Settings | None = None, market: MarketData | None = Non
         except Exception:
             # The ledger is valuable but not worth failing a page view over; a
             # failure is not cached, so the next view tries again.
-            log.exception("could not record snapshot", extra={"symbol": sym})
+            log.exception("could not record snapshot", extra={"symbol": log_safe(sym)})
         response = Response(content=body, media_type="application/json")
         shareable(response)
         return response
