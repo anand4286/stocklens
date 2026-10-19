@@ -82,7 +82,8 @@ jobs:
             note "app did not become healthy: $(docker logs stocklens-smoke 2>&1 | tail -20)"; exit 1
           fi
           curl -fsS "localhost:$port/api/v1/symbols/AAPL/report" >/dev/null || { note "report failed"; exit 1; }
-          curl -fsSI "localhost:$port/" | grep -qi "content-security-policy: default-src 'self'" \
+          curl -fsS -D - -o /dev/null "localhost:$port/" \
+            | grep -qi "content-security-policy: default-src 'self'" \
             || { note "CSP header missing"; exit 1; }
           uid=$(docker exec stocklens-smoke id -u)
           [ "$uid" = "10001" ] || { note "running as uid $uid, expected 10001"; exit 1; }

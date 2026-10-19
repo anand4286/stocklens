@@ -10,7 +10,7 @@ Every stock site shows you numbers. **StockLens checks them** — it commits a f
 outcome exists, grades itself in public, re-tests every signal on the stock in front of you, and
 verifies every figure its AI analyst cites.
 
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776ab?logo=python&logoColor=white)](pyproject.toml)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-3776ab?logo=python&logoColor=white)](pyproject.toml)
 [![Tests](https://img.shields.io/badge/tests-254%20passing-2ea44f)](tests)
 [![Numerics](https://img.shields.io/badge/numerics-pure%20python%2C%20no%20NumPy-6d8cff)](docs/adr/0005-numerics-implemented-not-imported.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
