@@ -6,7 +6,7 @@
 # Base images are pinned by digest (a tag can be repointed; a digest cannot).
 # Dependabot proposes digest updates. Every Python package is installed from a
 # hash-locked file: pip refuses anything whose SHA-256 is not recorded.
-FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS builder
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /build
 RUN python -m venv /opt/venv
@@ -21,7 +21,7 @@ RUN pip install --no-deps --no-build-isolation . \
  # from the virtualenv that is copied into the runtime image.
  && (python -m pip uninstall --yes pip setuptools wheel || true)
 
-FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS runtime
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS runtime
 LABEL org.opencontainers.image.title="stocklens" \
       org.opencontainers.image.description="Explainable stock analytics with a guarded AI analyst agent" \
       org.opencontainers.image.licenses="Apache-2.0"
